@@ -27,6 +27,12 @@ with matching : Type :=
 with bindings : Type :=
   | Bindings : list (var * expr) -> bindings.    (* {x1 = e1; ...; xn = en} *)
 
+Scheme expr_ind_mutual := Induction for expr Sort Prop
+with matching_ind_mutual := Induction for matching Sort Prop
+with bindings_ind_mutual := Induction for bindings Sort Prop.
+
+Print expr_ind_mutual.
+
 Fixpoint matching_arity (m : matching) : option nat :=
   match m with
   | MReturn _ => Some 0
@@ -62,15 +68,38 @@ Inductive matching_result : Type :=
   | MRReturn : expr -> matching_result    (* ⌈e⌉ *)
   | MRFail : matching_result.             (* ⊥ *)
 
-Scheme expr_ind_mutual := Induction for expr Sort Prop
-with matching_ind_mutual := Induction for matching Sort Prop
-with bindings_ind_mutual := Induction for bindings Sort Prop.
+Fixpoint occurs_in_pattern (x : var) (p : pattern) : bool :=
+  match p with
+  | PVar y => String.eqb x y
+  | PCons _ ps => existsb (occurs_in_pattern x) ps
+  end.
 
-Print expr_ind_mutual.
+Fixpoint subst_expr (x : var) (e' : expr) (e : expr) : expr :=
+  match e with
+  | EVar y => if String.eqb x y then e' else EVar y
+  | EApp e1 e2 => EApp (subst_expr x e' e1) (subst_expr x e' e2)
+  | ELam m => ELam (subst_matching x e' m)
+  | ECons c es => ECons c (map (subst_expr x e') es)
+  end
 
-(* proving simple lemmas to get up to speed *)
+with subst_matching (x : var) (e' : expr) (m : matching) : matching :=
+  match m with
+  | MReturn e => MReturn (subst_expr x e' e)
+  | MFail => MFail
+  | MMatch p m' => 
+      (* only substitute if x is not bound in pattern p *)
+      if occurs_in_pattern x p then MMatch p m'
+      else MMatch p (subst_matching x e' m')
+  | MSupply e m' => MSupply (subst_expr x e' e) (subst_matching x e' m')
+  | MAlt m1 m2 => MAlt (subst_matching x e' m1) (subst_matching x e' m2)
+  | MWhere m' (Bindings binds) => 
+      (* only substitute if x is not bound in the where clause *)
+      if existsb (fun '(y, _) => String.eqb x y) binds then MWhere m' (Bindings binds)
+      else MWhere (subst_matching x e' m') (Bindings (map (fun '(y, e_val) => (y, subst_expr x e' e_val)) binds))
+  end.
 
 (** Arity preservation *)
+
 Lemma matching_arity_where : forall m binds,
   matching_arity (MWhere m binds) = matching_arity m.
 Proof.
@@ -83,6 +112,26 @@ Proof.
   intros p m n H.
   simpl. rewrite H.
   reflexivity.
+Qed.
+
+Lemma subst_preserves_matching_arity :
+  forall x e' m, matching_arity (subst_matching x e' m) = matching_arity m.
+Proof.
+  intros x e'.
+  induction m using matching_ind_mutual with
+    (P := fun e => True)
+    (P0 := fun m => matching_arity (subst_matching x e' m) = matching_arity m)
+    (P1 := fun b => True);
+  simpl; auto.
+  - destruct (occurs_in_pattern x p) eqn:Hocc.
+    + reflexivity.
+    + simpl. rewrite IHm. reflexivity.
+  - rewrite IHm0. reflexivity.
+  - rewrite IHm1, IHm2. reflexivity.
+  - destruct b as [binds].
+    destruct (existsb (fun '(y, _) => String.eqb x y) binds) eqn:Hex.
+    + reflexivity.
+    + simpl. rewrite IHm. reflexivity.
 Qed.
 
 (* alt branches must have equal arity to be well-formed *)
