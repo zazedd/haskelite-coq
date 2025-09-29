@@ -1,4 +1,4 @@
-From Stdlib Require Import String List.
+From Stdlib Require Import String Arith List.
 Import ListNotations.
 
 (* Variable and constructor names *)
@@ -68,6 +68,9 @@ with bindings_ind_mutual := Induction for bindings Sort Prop.
 
 Print expr_ind_mutual.
 
+(* proving simple lemmas to get up to speed *)
+
+(** Arity preservation *)
 Lemma matching_arity_where : forall m binds,
   matching_arity (MWhere m binds) = matching_arity m.
 Proof.
@@ -78,5 +81,69 @@ Lemma matching_arity_preserved_under_pattern : forall p m n,
   matching_arity m = Some n -> matching_arity (MMatch p m) = Some (S n).
 Proof.
   intros p m n H.
-Admitted.
+  simpl. rewrite H.
+  reflexivity.
+Qed.
 
+(* alt branches must have equal arity to be well-formed *)
+Lemma matching_arity_alt_defined : forall m1 m2 n,
+  matching_arity (MAlt m1 m2) = Some n ->
+  exists n1 n2, matching_arity m1 = Some n1 /\ matching_arity m2 = Some n2 /\ n1 = n2.
+Proof.
+  intros m1 m2 n H.
+  simpl in H.
+  destruct (matching_arity m1) as [n1 | ] eqn:H1; destruct (matching_arity m2) as [n2 | ] eqn:H2;
+  try discriminate.
+  destruct (Nat.eqb n1 n2) eqn:Heq; try discriminate.
+  apply Nat.eqb_eq in Heq.
+  exists n1, n2.
+  auto.
+Qed.
+
+(** WHNF *)
+Lemma lambda_whnf : forall m n,
+  matching_arity m = Some (S n) -> whnf (ELam m).
+Proof.
+  intros. apply whnf_lambda with n. assumption.
+Qed.
+
+Lemma cons_whnf : forall c args,
+  whnf (ECons c args).
+Proof.
+  constructor.
+Qed.
+
+Lemma not_whnf_var : forall x, ~whnf (EVar x).
+Proof.
+  intros x H. inversion H.
+Qed.
+
+Lemma not_whnf_app : forall f e, ~whnf (EApp f e).
+Proof.
+  intros f e H. inversion H.
+Qed.
+
+(** Structural properties *)
+Lemma supply_reduces_arity : forall e m n,
+  matching_arity m = Some (S n) ->
+  matching_arity (MSupply e m) = Some n.
+Proof.
+  intros.
+  simpl. rewrite H.
+  reflexivity.
+Qed.
+
+Lemma supply_preserves_zero_arity : forall e m,
+  matching_arity m = Some 0 ->
+  matching_arity (MSupply e m) = Some 0.
+Proof.
+  intros.
+  simpl. rewrite H.
+  reflexivity.
+Qed.
+
+Lemma return_arity_zero : forall e, matching_arity (MReturn e) = Some 0.
+Proof. reflexivity. Qed.
+
+Lemma fail_arity_zero : matching_arity MFail = Some 0.
+Proof. reflexivity. Qed.
