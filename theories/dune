@@ -1,4 +1,5 @@
 (coq.theory
- (name Syntax)
+ (package haskelite)
+ (name Expr)
  (theories Stdlib))
 
