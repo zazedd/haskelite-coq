@@ -95,7 +95,6 @@ Inductive eval_expr : heap -> var_set -> expr -> heap -> expr -> Prop :=
       eval_expr D L e O w ->
       eval_expr G L (ELam m) O w
 
-  (* ???? *)
   | EvalVar : forall G L y e D w,
       heap_lookup G y = Some e ->
       ~ (In y L) ->
@@ -197,6 +196,22 @@ Proof.
   - apply StringMapFacts.find_mapsto_iff; auto.
 Qed.
 
+Lemma map_injective : forall {A B : Type} (f : A -> B) (l1 l2 : list A),
+  (forall x y, f x = f y -> x = y) ->
+  map f l1 = map f l2 ->
+  l1 = l2.
+Proof.
+  intros A B f l1.
+  induction l1; intros l2 Hinj Hmap.
+  - destruct l2; auto. discriminate.
+  - destruct l2.
+    + discriminate.
+    + simpl in Hmap. injection Hmap as Hhead Htail.
+      f_equal.
+      * apply Hinj. assumption.
+      * apply IHl1; assumption.
+Qed.
+
 Lemma eval_expr_deterministic : forall G L e D1 w1 D2 w2,
   eval_expr G L e D1 w1 ->
   eval_expr G L e D2 w2 ->
@@ -206,22 +221,61 @@ with eval_matching_deterministic : forall G L A m D1 u1 D2 u2,
   eval_matching G L A m D2 u2 ->
   D1 = D2 /\ u1 = u2.
 Proof.
-  - intros G L e D1 w1 D2 w2 H1 H2. 
+  - intros G L e D1 w1 D2 w2 H1 H2.
     induction H1; inversion H2; subst; try congruence.
-    + (* EvalWhnf - EvalWhnf *) auto.
-    + (* EvalWhnf - EvalSat *)
-      (* contra: ELam m is a whnf but EvalSat requires matching_arity = Some 0 *)
-      exfalso.
-      inversion H; subst.
+    + auto.
+    + inversion H; subst.
       rewrite H0 in H5. discriminate.
-    + (* EvalSat - EvalWhnf *)
-      (* same thing *)
-      exfalso. inversion H.
-    + (* ? *)
+    + inversion H.
+    + inversion H.
+    + inversion H3. subst.
+      rewrite H5 in H.
+      discriminate.
+    + assert (D = D0 /\ MRReturn e = MRReturn e0) as [HeqD Heqe]. {
+        eapply eval_matching_deterministic; eauto.
+      }
+      inversion Heqe; subst.
+      eapply IHeval_expr; eauto.
+    + inversion H3.
+    + assert (e = e0) as Heqe. {
+        eapply heap_lookup_deterministic; eauto.
+      }
+      subst.
+      assert (D = D0 /\ w = w2) as [Heq1 Heq2]. {
+        eapply eval_expr_deterministic; eauto.
+      }
+      subst. auto.
+    + inversion H0.
+    + inversion H6; subst.
+      assert (D = D0 /\ ELam m = ELam m0) as [HeqD Heqm]. {
+        eapply eval_expr_deterministic; eauto.
+      }
+      inversion Heqm; subst.
+      apply IHeval_expr2. assumption.
+  - intros G L A m D1 u1 D2 u2 H1 H2.
+    induction H1; inversion H2; subst; try congruence; try auto.
+    + assert (D = D0 /\ ECons c (map EVar args) = ECons c (map EVar args0)) as [HeqD Hcons]. {
+        eapply eval_expr_deterministic; eauto.
+      }
+      injection Hcons as Heqargs.
+      apply map_injective in Heqargs; subst.
+      * apply IHeval_matching.
+        assumption.
+      * intros x1 x2 Heq.
+        injection Heq. trivial.
+    + assert (D = D2 /\ ECons c (map EVar args) = ECons c' args0) as [HeqD Hcons]. {
+        eapply eval_expr_deterministic; eauto.
+      }
+      injection Hcons as Heqc _.
+      congruence.
+    + assert (D = D0 /\ ECons c' args = ECons c (map EVar args0)) as [HeqD Hcons]. {
+        eapply eval_expr_deterministic; eauto.
+      }
+      injection Hcons as Heqc _.
+      congruence.
+    + split; [ | trivial].
       admit.
-    + (* ? *)
-      admit.
-    + (* EvalVar - EvalVar *)
 Admitted.
+
 
 
