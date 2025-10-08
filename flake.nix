@@ -17,15 +17,22 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
         coqDeps = with pkgs; [
+          tree-sitter
+          python3
+          ocaml
           dune_3
 
-          rocq-core_9_1
-          rocqPackages.stdlib
+          coq_8_20
+          coqPackages_8_20.stdlib
+        ];
+
+        devDeps = with pkgs; [
+          coqPackages_8_20.coq-lsp
         ];
       in
       {
         devShells.default = pkgs.mkShell {
-          buildInputs = coqDeps;
+          buildInputs = coqDeps ++ devDeps;
         };
       }
     );
