@@ -4,6 +4,8 @@ From Coq Require Import FMaps FSets.
 From Haskelite Require Import Expr.
 Import ListNotations.
 
+Definition bindings := list (var * expr).
+
 Module StringDec <: DecidableType.
   Definition t := string.
   Definition eq := @eq string.
@@ -36,7 +38,7 @@ Definition in_var_set (x : var) (s : var_set) : bool :=
   existsb (String.eqb x) s.
 
 (* renamings only *)
-Fixpoint subst_expr (e : expr) (y : var) (x : var) : expr :=
+Fixpoint subst_expr (e : expr) (y : var) (x : var) {struct e} : expr :=
   match e with
   | EVar z => if String.eqb z x then EVar y else EVar z
   | EApp e1 e2 => EApp (subst_expr e1 y x) (subst_expr e2 y x)
@@ -44,20 +46,16 @@ Fixpoint subst_expr (e : expr) (y : var) (x : var) : expr :=
 | ECons c es => ECons c (map (fun e => subst_expr e y x) es)
   end
 
-with subst_matching (m : matching) (y : var) (x : var) : matching :=
+with subst_matching (m : matching) (y : var) (x : var) {struct m} : matching :=
   match m with
   | MReturn e => MReturn (subst_expr e y x)
   | MFail => MFail
   | MMatch p m' => MMatch p (subst_matching m' y x)
   | MSupply e m' => MSupply (subst_expr e y x) (subst_matching m' y x)
   | MAlt m1 m2 => MAlt (subst_matching m1 y x) (subst_matching m2 y x)
-  | MWhere m' b => MWhere (subst_matching m' y x) (subst_bindings b y x)
+  | MWhere m' b => MWhere (subst_matching m' y x) (map (fun p => (fst p, subst_expr (snd p) y x)) b)
   end
-
-with subst_bindings (b : bindings) (y : var) (x : var) : bindings :=
-  match b with
-  | Bindings bs => Bindings (map (fun p => (fst p, subst_expr (snd p) y x)) bs)
-  end.
+.
 
 Fixpoint apply_args (args : list var) (e : expr) : expr :=
   match args with
@@ -83,6 +81,21 @@ Fixpoint build_nested_matches (vars : list var) (pats : list pattern) (m : match
   | v :: vs, p :: ps => MSupply (EVar v) (MMatch p (build_nested_matches vs ps m))
   | _, _ => MFail
   end.
+
+Fixpoint rename_bindings (b : list (var * expr)) (ys : list var) : list (var * expr) := 
+  match b, ys with
+  | [], [] | [], _ | _, [] => []
+  | (x, e) :: xs, y :: ys => (y, e) :: rename_bindings xs ys
+  end.
+
+Definition rename_matching (m : matching) (ys : list var) (binds : list (var * expr)) : matching := 
+  match m with
+  | MWhere ms bs => let b := rename_bindings bs ys in MWhere ms b
+  | _ => m
+  end.
+
+Definition allocate_bindings (G : heap) (b : list (var * expr)) : heap :=
+  fold_left (fun acc (s : (var * expr)) => let (k, e) := s in heap_update acc k e) b G.
 
 Inductive eval_expr : heap -> var_set -> expr -> heap -> expr -> Prop :=
   | EvalWhnf : forall G L w,
@@ -143,16 +156,16 @@ with eval_matching : heap -> var_set -> list var -> matching -> heap -> matching
       eval_matching D L A m2 O u ->
       eval_matching G L A (MAlt m1 m2) O u
 
-  (*| EvalWhere : forall G L A m binds D u ys renamed_binds renamed_m,*)
-  (*    length ys = length binds ->*)
-  (*    (* ys are fresh w.r.t. G, L, A, m, and bindings *)*)
-  (*    (forall y, In y ys -> ~In y L /\ heap_lookup G y = None) ->*)
-  (*    (* perform renaming *)*)
-  (*    renamed_binds = rename_bindings binds ys ->*)
-  (*    renamed_m = rename_matching m ys binds ->*)
-  (*    (* allocate renamed bindings in heap *)*)
-  (*    eval_matching (allocate_bindings G renamed_binds) L A renamed_m D u ->*)
-  (*    eval_matching G L A (MWhere m (Bindings binds)) D u*)
+  | EvalWhere : forall G L A m binds D u ys renamed_binds renamed_m,
+      length ys = length binds ->
+      (* ys are fresh w.r.t. G, L, A, m, and bindings *)
+      (forall y, In y ys -> ~In y L /\ heap_lookup G y = None) ->
+      (* perform renaming *)
+      renamed_binds = rename_bindings binds ys ->
+      renamed_m = rename_matching m ys binds ->
+      (* allocate renamed bindings in heap *)
+      eval_matching (allocate_bindings G renamed_binds) L A renamed_m D u ->
+      eval_matching G L A (MWhere m binds) D u
 .
 
 Scheme eval_expr_ind_mutual := Induction for eval_expr Sort Prop
@@ -212,6 +225,22 @@ Proof.
       * apply IHl1; assumption.
 Qed.
 
+Ltac solve_determinism_expr expr_det :=
+  match goal with
+  | [ H1 : eval_expr ?G ?L ?e ?D1 ?w1,
+      H2 : eval_expr ?G ?L ?e ?D2 ?w2 |- _ ] =>
+      assert (D1 = D2 /\ w1 = w2) as [?HeqD ?Heqe] by (eapply expr_det; eauto);
+      try discriminate; try congruence; subst
+  end.
+
+Ltac solve_determinism_match match_det :=
+  match goal with
+  | [ H1 : eval_matching ?G ?L ?A ?m ?D1 ?u1,
+      H2 : eval_matching ?G ?L ?A ?m ?D2 ?u2 |- _ ] =>
+      assert (D1 = D2 /\ u1 = u2) as [?HeqD ?Hequ] by (eapply match_det; eauto);
+      try discriminate; try congruence; subst
+  end.
+
 Lemma eval_expr_deterministic : forall G L e D1 w1 D2 w2,
   eval_expr G L e D1 w1 ->
   eval_expr G L e D2 w2 ->
@@ -224,58 +253,38 @@ Proof.
   - intros G L e D1 w1 D2 w2 H1 H2.
     induction H1; inversion H2; subst; try congruence.
     + auto.
-    + inversion H; subst.
-      rewrite H0 in H5. discriminate.
+    + inversion H; subst. rewrite H0 in H5. discriminate.
     + inversion H.
     + inversion H.
-    + inversion H3. subst.
-      rewrite H5 in H.
-      discriminate.
-    + assert (D = D0 /\ MRReturn e = MRReturn e0) as [HeqD Heqe]. {
-        eapply eval_matching_deterministic; eauto.
-      }
-      inversion Heqe; subst.
+    + inversion H3. subst. rewrite H5 in H. discriminate.
+    + solve_determinism_match eval_matching_deterministic.
+      inversion Hequ; subst.
       eapply IHeval_expr; eauto.
     + inversion H3.
-    + assert (e = e0) as Heqe. {
-        eapply heap_lookup_deterministic; eauto.
-      }
+    + assert (e = e0) as Heqe. { eapply heap_lookup_deterministic; eauto. }
       subst.
-      assert (D = D0 /\ w = w2) as [Heq1 Heq2]. {
-        eapply eval_expr_deterministic; eauto.
-      }
+      solve_determinism_expr eval_expr_deterministic.
       subst. auto.
     + inversion H0.
     + inversion H6; subst.
-      assert (D = D0 /\ ELam m = ELam m0) as [HeqD Heqm]. {
-        eapply eval_expr_deterministic; eauto.
-      }
-      inversion Heqm; subst.
+      solve_determinism_expr eval_expr_deterministic.
+      inversion Heqe; subst.
       apply IHeval_expr2. assumption.
+
   - intros G L A m D1 u1 D2 u2 H1 H2.
     induction H1; inversion H2; subst; try congruence; try auto.
-    + assert (D = D0 /\ ECons c (map EVar args) = ECons c (map EVar args0)) as [HeqD Hcons]. {
-        eapply eval_expr_deterministic; eauto.
-      }
-      injection Hcons as Heqargs.
+    + solve_determinism_expr eval_expr_deterministic.
+      injection Heqe as Heqargs.
       apply map_injective in Heqargs; subst.
       * apply IHeval_matching.
         assumption.
       * intros x1 x2 Heq.
         injection Heq. trivial.
-    + assert (D = D2 /\ ECons c (map EVar args) = ECons c' args0) as [HeqD Hcons]. {
-        eapply eval_expr_deterministic; eauto.
-      }
-      injection Hcons as Heqc _.
-      congruence.
-    + assert (D = D0 /\ ECons c' args = ECons c (map EVar args0)) as [HeqD Hcons]. {
-        eapply eval_expr_deterministic; eauto.
-      }
-      injection Hcons as Heqc _.
-      congruence.
-    + split; [ | trivial].
-      admit.
+    + solve_determinism_expr eval_expr_deterministic.
+    + solve_determinism_expr eval_expr_deterministic.
+    + split; [ | trivial]. eapply eval_expr_deterministic; eauto.
+    + solve_determinism_match eval_matching_deterministic.
+    + solve_determinism_match eval_matching_deterministic.
+    + solve_determinism_match eval_matching_deterministic. subst. auto.
+    + admit. (* different fresh variables, alpha equivalence required *)
 Admitted.
-
-
-

@@ -20,14 +20,11 @@ with matching : Type :=
   | MMatch : pattern -> matching -> matching     (* p ⇒ m *)
   | MSupply : expr -> matching -> matching       (* e ⊲ m *)
   | MAlt : matching -> matching -> matching      (* m1 | m2 *)
-  | MWhere : matching -> bindings -> matching    (* m where binds *)
-
-with bindings : Type :=
-  | Bindings : list (var * expr) -> bindings.    (* {x1 = e1; ...; xn = en} *)
+  | MWhere : matching -> list (var * expr) -> matching    (* m where binds *)
+.
 
 Scheme expr_ind_mutual := Induction for expr Sort Prop
-with matching_ind_mutual := Induction for matching Sort Prop
-with bindings_ind_mutual := Induction for bindings Sort Prop.
+with matching_ind_mutual := Induction for matching Sort Prop.
 
 Print expr_ind_mutual.
 

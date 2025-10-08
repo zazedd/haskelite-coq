@@ -17,8 +17,6 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
         coqDeps = with pkgs; [
-          tree-sitter
-          python3
           ocaml
           dune_3
 
@@ -33,6 +31,25 @@
       {
         devShells.default = pkgs.mkShell {
           buildInputs = coqDeps ++ devDeps;
+        };
+
+        packages.default = pkgs.coqPackages_8_20.mkCoqDerivation {
+          pname = "haskelite";
+          owner = "zazedd";
+          version = "0.1.0";
+          src = ./.;
+
+          buildInputs = coqDeps;
+          propagatedBuildInputs = coqDeps;
+
+          buildPhase = ''
+            dune build
+          '';
+
+          installPhase = ''
+            mkdir -p $out/lib/coq/user-contrib/haskelite
+            cp -r _build/default/theories/* $out/lib/coq/user-contrib/haskelite
+          '';
         };
       }
     );
