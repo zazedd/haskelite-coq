@@ -1,6 +1,5 @@
 From Coq Require Import String Arith List.
 From Coq Require Import FMaps FSets.
-
 From Haskelite Require Import Expr.
 Import ListNotations.
 
@@ -43,7 +42,7 @@ Fixpoint subst_expr (e : expr) (y : var) (x : var) {struct e} : expr :=
   | EVar z => if String.eqb z x then EVar y else EVar z
   | EApp e1 e2 => EApp (subst_expr e1 y x) (subst_expr e2 y x)
   | ELam m => ELam (subst_matching m y x)
-| ECons c es => ECons c (map (fun e => subst_expr e y x) es)
+  | ECons c es => ECons c (map (fun e => subst_expr e y x) es)
   end
 
 with subst_matching (m : matching) (y : var) (x : var) {struct m} : matching :=
@@ -96,6 +95,36 @@ Definition rename_matching (m : matching) (ys : list var) (binds : list (var * e
 
 Definition allocate_bindings (G : heap) (b : list (var * expr)) : heap :=
   fold_left (fun acc (s : (var * expr)) => let (k, e) := s in heap_update acc k e) b G.
+
+Open Scope string_scope.
+Fixpoint string_of_nat_aux (time n : nat) (acc : string) : string :=
+  let d := match n mod 10 with
+           | 0 => "0" | 1 => "1" | 2 => "2" | 3 => "3" | 4 => "4" | 5 => "5"
+           | 6 => "6" | 7 => "7" | 8 => "8" | _ => "9"
+           end in
+  let acc' := d ++ acc in
+  match time with
+    | 0 => acc'
+    | S time' =>
+      match n / 10 with
+        | 0 => acc'
+        | n' => string_of_nat_aux time' n' acc'
+      end
+  end.
+
+Definition string_of_nat (n : nat) : string :=
+  string_of_nat_aux n n "".
+
+Fixpoint generate_fresh_vars (base : var) (n : nat) (avoid : list var) : list var :=
+  match n with
+  | O => []
+  | S n' => 
+      let candidate := base ++ "_" ++ string_of_nat (length avoid + n') in
+      if in_dec string_dec candidate avoid then
+        generate_fresh_vars base n' avoid
+      else
+        candidate :: generate_fresh_vars base n' (candidate :: avoid)
+  end.
 
 Inductive eval_expr : heap -> var_set -> expr -> heap -> expr -> Prop :=
   | EvalWhnf : forall G L w,
@@ -156,17 +185,28 @@ with eval_matching : heap -> var_set -> list var -> matching -> heap -> matching
       eval_matching D L A m2 O u ->
       eval_matching G L A (MAlt m1 m2) O u
 
-  | EvalWhere : forall G L A m binds D u ys renamed_binds renamed_m,
-      length ys = length binds ->
-      (* ys are fresh w.r.t. G, L, A, m, and bindings *)
-      (forall y, In y ys -> ~In y L /\ heap_lookup G y = None) ->
-      (* perform renaming *)
-      renamed_binds = rename_bindings binds ys ->
-      renamed_m = rename_matching m ys binds ->
-      (* allocate renamed bindings in heap *)
-      eval_matching (allocate_bindings G renamed_binds) L A renamed_m D u ->
-      eval_matching G L A (MWhere m binds) D u
+  (* this would require a full alpha equivalence relation *)
+  (*| EvalWhere : forall G L A m binds D u ys renamed_binds renamed_m,*)
+  (*    length ys = length binds ->*)
+  (*    (* ys are fresh w.r.t. G, L, A, m, and bindings *)*)
+  (*    (forall y, In y ys -> ~In y L /\ heap_lookup G y = None) ->*)
+  (*    (* perform renaming *)*)
+  (*    renamed_binds = rename_bindings binds ys ->*)
+  (*    renamed_m = rename_matching m ys binds ->*)
+  (*    (* allocate renamed bindings in heap *)*)
+  (*    eval_matching (allocate_bindings G renamed_binds) L A renamed_m D u ->*)
+  (*    eval_matching G L A (MWhere m binds) D u*)
+
+  (* for now, canonical naming is enough *)
+  | EvalWhere : forall G L A m binds D u,
+    let avoid := List.app L (map fst (StringMap.elements G)) in
+    let ys := generate_fresh_vars "y" (length binds) avoid in
+    eval_matching (allocate_bindings G (rename_bindings binds ys)) L A 
+                  (rename_matching m ys binds) D u ->
+    eval_matching G L A (MWhere m binds) D u
 .
+
+Close Scope string_scope.
 
 Scheme eval_expr_ind_mutual := Induction for eval_expr Sort Prop
 with eval_matching_ind_mutual := Induction for eval_matching Sort Prop.
@@ -286,5 +326,4 @@ Proof.
     + solve_determinism_match eval_matching_deterministic.
     + solve_determinism_match eval_matching_deterministic.
     + solve_determinism_match eval_matching_deterministic. subst. auto.
-    + admit. (* different fresh variables, alpha equivalence required *)
-Admitted.
+Qed.
