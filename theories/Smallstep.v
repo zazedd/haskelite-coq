@@ -254,6 +254,19 @@ Proof.
   intros. inversion H0. reflexivity.
 Qed.
 
+Ltac solve_determinism_small :=
+  match goal with
+  | [ H1 : CtrlExpr ?e = CtrlExpr ?e2,
+      H2 : whnf ?w |- _ ] =>
+      inversion H1; subst;
+      inversion H2; subst;
+      try (match goal with
+           | [ H1 : matching_arity ?m = Some 0,
+               H2 : matching_arity ?m = Some (S ?n) |- _ ] =>
+               rewrite H1 in H2; discriminate
+           end)
+  end.
+
 Lemma small_step_deterministic : forall c c1 c2,
   c s=> c1 -> c s=> c2 -> c1 = c2.
 Proof.
@@ -261,15 +274,12 @@ Proof.
   destruct c as [G ctrl St].
   inversion H1; inversion H2; subst;
   (* this generates lots of cases. most of them solvable by congruence*)
-  try congruence.
-  - inversion H7; subst. inversion H9.
-  - inversion H8; subst. inversion H10. rewrite H0 in H5. discriminate.
-  - inversion H8; subst. inversion H10.
-  - inversion H8; subst. inversion H5.
-  - inversion H8; subst. inversion H5; subst. rewrite H0 in H10. discriminate.
-  - inversion H8; subst. inversion H5.
-  - inversion H8; subst.
-    apply map_EVar_inj in H3; subst.
-    inversion H9; subst.
-    reflexivity.
+  try congruence;
+  (* others solved by proving that the whnf is impossible *)
+  try solve_determinism_small.
+
+  inversion H8; subst.
+  apply map_EVar_inj in H3; subst.
+  inversion H9; subst.
+  reflexivity.
 Qed.
