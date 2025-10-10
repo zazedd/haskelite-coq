@@ -1,6 +1,6 @@
 From Coq Require Import String Arith List.
 From Coq Require Import FMaps FSets.
-From Haskelite Require Import Expr Bigstep.
+From Haskelite Require Import Expr Common.
 Import ListNotations.
 
 (* stack frames *)
@@ -23,12 +23,6 @@ Record config : Type := {
   cfg_ctrl : control;
   cfg_stack : stack
 }.
-
-Fixpoint apply_args_to_expr (args : list var) (e : expr) : expr :=
-  match args with
-  | [] => e
-  | y :: ys => apply_args_to_expr ys (EApp e (EVar y))
-  end.
 
 Inductive step : config -> config -> Prop :=
   (** expr evaluation rules *)
@@ -91,7 +85,7 @@ Inductive step : config -> config -> Prop :=
               cfg_ctrl := CtrlMatch A (MReturn e);
               cfg_stack := St |}
            {| cfg_heap := G;
-              cfg_ctrl := CtrlMatch [] (MReturn (apply_args_to_expr A e));
+              cfg_ctrl := CtrlMatch [] (MReturn (apply_args A e));
               cfg_stack := St |}
 
   (* return with empty args and $ mark evaluates expression *)

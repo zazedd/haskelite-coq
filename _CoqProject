@@ -1,4 +1,5 @@
 -R theories Haskelite
 theories/Expr.v
+theories/Common.v
 theories/Bigstep.v
 theories/Smallstep.v
