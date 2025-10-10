@@ -246,3 +246,30 @@ Definition balanced_matching_eval (G : heap) (A : list var) (m : matching)
       {| cfg_heap := D; cfg_ctrl := CtrlMatch [] MFail; cfg_stack := St |}
   end.
 
+Lemma map_EVar_inj : forall args1 args2,
+      map EVar args1 = map EVar args2 -> args1 = args2.
+Proof.
+  intros.
+  apply map_injective in H; auto.
+  intros. inversion H0. reflexivity.
+Qed.
+
+Lemma small_step_deterministic : forall c c1 c2,
+  c s=> c1 -> c s=> c2 -> c1 = c2.
+Proof.
+  intros c c1 c2 H1 H2.
+  destruct c as [G ctrl St].
+  inversion H1; inversion H2; subst;
+  (* this generates lots of cases. most of them solvable by congruence*)
+  try congruence.
+  - inversion H7; subst. inversion H9.
+  - inversion H8; subst. inversion H10. rewrite H0 in H5. discriminate.
+  - inversion H8; subst. inversion H10.
+  - inversion H8; subst. inversion H5.
+  - inversion H8; subst. inversion H5; subst. rewrite H0 in H10. discriminate.
+  - inversion H8; subst. inversion H5.
+  - inversion H8; subst.
+    apply map_EVar_inj in H3; subst.
+    inversion H9; subst.
+    reflexivity.
+Qed.

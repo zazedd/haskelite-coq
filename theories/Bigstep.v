@@ -162,22 +162,6 @@ Proof.
   - apply StringMapFacts.find_mapsto_iff; auto.
 Qed.
 
-Lemma map_injective : forall {A B : Type} (f : A -> B) (l1 l2 : list A),
-  (forall x y, f x = f y -> x = y) ->
-  map f l1 = map f l2 ->
-  l1 = l2.
-Proof.
-  intros A B f l1.
-  induction l1; intros l2 Hinj Hmap.
-  - destruct l2; auto. discriminate.
-  - destruct l2.
-    + discriminate.
-    + simpl in Hmap. injection Hmap as Hhead Htail.
-      f_equal.
-      * apply Hinj. assumption.
-      * apply IHl1; assumption.
-Qed.
-
 Ltac solve_determinism_expr expr_det :=
   match goal with
   | [ H1 : eval_expr ?G ?L ?e ?D1 ?w1,
