@@ -242,13 +242,13 @@ Definition balanced_expr_eval (G : heap) (e : expr) (D : heap) (w : expr) (St : 
   whnf w.
 
 Definition balanced_matching_eval (G : heap) (A : list var) (m : matching)
-                                  (u : matching_result) (St : stack) : Prop :=
+                                  (D : heap) (u : matching_result) (St : stack) : Prop :=
   match u with
   | MRReturn e =>
       {| cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} s=>*
-      {| cfg_heap := G; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := St |}
+      {| cfg_heap := D; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := St |}
   | MRFail =>
       {| cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} s=>*
-      {| cfg_heap := G; cfg_ctrl := CtrlMatch [] MFail; cfg_stack := St |}
+      {| cfg_heap := D; cfg_ctrl := CtrlMatch [] MFail; cfg_stack := St |}
   end.
 
