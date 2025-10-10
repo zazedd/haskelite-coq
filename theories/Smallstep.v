@@ -205,3 +205,17 @@ Inductive step_star : config -> config -> Prop :=
 Notation "c1 s=> c2" := (step c1 c2) (at level 70).
 Notation "c1 s=>* c2" := (step_star c1 c2) (at level 70).
 
+Lemma step_star_one : forall c1 c2,
+  c1 s=> c2 -> c1 s=>* c2.
+Proof.
+  intros. eapply step_trans; eauto. constructor.
+Qed.
+
+Lemma step_star_trans : forall c1 c2 c3,
+  c1 s=>* c2 -> c2 s=>* c3 -> c1 s=>* c3.
+Proof.
+  intros. induction H.
+  - assumption.
+  - eapply step_trans; eauto.
+Qed.
+
