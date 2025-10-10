@@ -10,6 +10,12 @@ Run the following command:
 dune build
 ```
 
+Or, if you have Nix:
+
+```bash
+nix build
+```
+
 ## Devshell
 
 To enter a devshell with all dependencies and development tools needed for the project:
