@@ -10,35 +10,6 @@ Definition in_var_set (x : var) (s : var_set) : bool :=
   existsb (String.eqb x) s.
 
 Open Scope string_scope.
-Fixpoint string_of_nat_aux (time n : nat) (acc : string) : string :=
-  let d := match n mod 10 with
-           | 0 => "0" | 1 => "1" | 2 => "2" | 3 => "3" | 4 => "4" | 5 => "5"
-           | 6 => "6" | 7 => "7" | 8 => "8" | _ => "9"
-           end in
-  let acc' := d ++ acc in
-  match time with
-    | 0 => acc'
-    | S time' =>
-      match n / 10 with
-        | 0 => acc'
-        | n' => string_of_nat_aux time' n' acc'
-      end
-  end.
-
-Definition string_of_nat (n : nat) : string :=
-  string_of_nat_aux n n "".
-
-Fixpoint generate_fresh_vars (base : var) (n : nat) (avoid : list var) : list var :=
-  match n with
-  | O => []
-  | S n' => 
-      let candidate := base ++ "_" ++ string_of_nat (length avoid + n') in
-      if in_dec string_dec candidate avoid then
-        generate_fresh_vars base n' avoid
-      else
-        candidate :: generate_fresh_vars base n' (candidate :: avoid)
-  end.
-
 Inductive eval_expr : heap -> var_set -> expr -> heap -> expr -> Prop :=
   | EvalWhnf : forall G L w,
       whnf w ->
@@ -67,8 +38,9 @@ with eval_matching : heap -> var_set -> list var -> matching -> heap -> matching
   | EvalReturn : forall G L A e,
       eval_matching G L A (MReturn e) G (MRReturn (apply_args A e))
 
-  | EvalMatchFail : forall G L A,
-      eval_matching G L A MFail G MRFail
+  | EvalMatchFail : forall G L,
+      eval_matching G L [] MFail G MRFail 
+      (* in the paper, the value of A is not restricted in the BSS, but the SSS restricts it to [] *)
 
   | EvalArg : forall G L A x m D u,
       eval_matching G L (x :: A) m D u ->

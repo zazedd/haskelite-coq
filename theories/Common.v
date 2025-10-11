@@ -65,6 +65,36 @@ Definition rename_matching (m : matching) (ys : list var) (binds : list (var * e
 Definition allocate_bindings (G : heap) (b : list (var * expr)) : heap :=
   fold_left (fun acc (s : (var * expr)) => let (k, e) := s in heap_update acc k e) b G.
 
+Open Scope string_scope.
+Fixpoint string_of_nat_aux (time n : nat) (acc : string) : string :=
+  let d := match n mod 10 with
+           | 0 => "0" | 1 => "1" | 2 => "2" | 3 => "3" | 4 => "4" | 5 => "5"
+           | 6 => "6" | 7 => "7" | 8 => "8" | _ => "9"
+           end in
+  let acc' := d ++ acc in
+  match time with
+    | 0 => acc'
+    | S time' =>
+      match n / 10 with
+        | 0 => acc'
+        | n' => string_of_nat_aux time' n' acc'
+      end
+  end.
+
+Definition string_of_nat (n : nat) : string :=
+  string_of_nat_aux n n "".
+
+Fixpoint generate_fresh_vars (base : var) (n : nat) (avoid : list var) : list var :=
+  match n with
+  | O => []
+  | S n' => 
+      let candidate := base ++ "_" ++ string_of_nat (length avoid + n') in
+      if in_dec string_dec candidate avoid then
+        generate_fresh_vars base n' avoid
+      else
+        candidate :: generate_fresh_vars base n' (candidate :: avoid)
+  end.
+Close Scope string_scope.
 
 (* build y1 |> p1 => ... =>  yn |> pn =>  m *)
 Fixpoint build_nested_matches (vars : list var) (pats : list pattern) (m : matching) : matching :=

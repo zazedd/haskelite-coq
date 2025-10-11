@@ -3,3 +3,4 @@ theories/Expr.v
 theories/Common.v
 theories/Bigstep.v
 theories/Smallstep.v
+theories/Semantics_equiv.v
