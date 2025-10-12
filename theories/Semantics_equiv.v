@@ -3,12 +3,6 @@ From Coq Require Import FMaps FSets.
 From Haskelite Require Import Expr Common Bigstep Smallstep.
 Import ListNotations.
 
-Lemma eval_expr_produces_whnf : forall G L e D w,
-  eval_expr G L e D w -> whnf w.
-Proof.
-  intros. induction H; assumption.
-Qed.
-
 Lemma whnf_lambda_arity : forall m,
   whnf (ELam m) ->
   exists n, matching_arity m = Some (S n).
@@ -18,11 +12,11 @@ Proof.
   exists n. assumption.
 Qed.
 
-Lemma eval_expr_lambda_arity : forall G L e D m,
-  eval_expr G L e D (ELam m) ->
+Lemma eval_expr_lambda_arity : forall c G L e D m c',
+  eval_expr c G L e D (ELam m) c' ->
   exists n, matching_arity m = Some (S n).
 Proof.
-  intros G L e D m H.
+  intros c G L e D m c' H.
   apply whnf_lambda_arity.
   eapply eval_expr_produces_whnf.
   eassumption.
@@ -30,22 +24,22 @@ Qed.
 
 (* theorem 4.1 *)
 Theorem big_step_impl_small_step :
-  (forall G L e D w,
-    eval_expr G L e D w ->
-    forall St, {| cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |} s=>*
-               {| cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |})
+  (forall c G L e D w c',
+    eval_expr c G L e D w c' ->
+    forall St, {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |} s=>*
+               {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |})
   /\
-  (forall G L A m D u,
-    eval_matching G L A m D u ->
-    forall St, {| cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} s=>*
-               {| cfg_heap := D; cfg_ctrl := CtrlMatch []
-                                  (match u with MRReturn e => MReturn e | MRFail => MFail end); 
+  (forall c G L A m D u c',
+    eval_matching c G L A m D u c' ->
+    forall St, {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} s=>*
+               {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch []
+                                  (match u with MRReturn e => MReturn e | MRFail => MFail end);
                   cfg_stack := St |}).
 Proof.
   apply eval_ind.
-  - intros G L w Hwhnf St.
+  - intros c G L w Hwhnf St.
     constructor.
-  - intros G L m e D O w Harity Hmatch IHmatch Heval IHeval St.
+  - intros c c1 c2 G L m e D O w Harity Hmatch IHmatch Heval IHeval St.
     eapply step_star_trans.
     + eapply step_trans.
       * apply StepSat. eassumption.
@@ -58,7 +52,7 @@ Proof.
            -- apply step_refl.
         ** apply IHeval.
 
-  - intros G L y e D w Hheap Hin Heval IHexpr St.
+  - intros c c1 G L y e D w Hheap Hin Heval IHexpr St.
     eapply step_star_trans.
     + eapply step_trans.
       * apply StepVar. eassumption.
@@ -69,9 +63,9 @@ Proof.
         ** apply StepUpdate. eapply eval_expr_produces_whnf. eassumption.
         ** apply step_refl.
 
-  - intros G L e1 e2 m D O w x Hexpr1 IHexpr Hvar Hexpr2 IHexpr2 St.
+  - intros c c1 c2 G L e1 e2 m D O w x Hexpr1 IHexpr Hvar Hexpr2 IHexpr2 St.
     subst e2.
-    destruct (eval_expr_lambda_arity _ _ _ _ _ Hexpr1) as [n Harity].
+    destruct (eval_expr_lambda_arity _ _ _ _ _ _ _ Hexpr1) as [n Harity].
     eapply step_star_trans.
     + eapply step_trans.
       * apply StepApp1.
@@ -84,7 +78,7 @@ Proof.
            ++ apply step_refl.
         ** apply IHexpr2.
 
-  - intros G L A e St.
+  - intros c G L A e St.
     destruct A as [| y A'].
     + simpl. apply step_refl.
     + eapply step_star_trans.
@@ -93,23 +87,23 @@ Proof.
         ** apply step_refl.
       * apply step_refl.
 
-  - intros G L st. apply step_refl.
+  - intros c G L St. apply step_refl.
 
-  - intros G L A x m D u _ IHmatch St.
+  - intros c c' G L A x m D u _ IHmatch St.
     eapply step_star_trans.
     + eapply step_trans.
       * apply StepArg.
       * apply step_refl.
     + apply IHmatch.
 
-  - intros G L A x y m D u _ IHmatch St.
+  - intros c c' G L A x y m D u _ IHmatch St.
     eapply step_star_trans.
     + eapply step_trans.
       * apply StepBind.
       * apply step_refl.
     + apply IHmatch.
 
-  - intros G L A x c ps m args D O u Hexpr IHexpr Hlen Hmatching IHmatching St.
+  - intros c c1 c2 G L A x con ps m args D O u Hexpr IHexpr Hlen Hmatching IHmatching St.
     eapply step_star_trans.
     + eapply step_trans.
       * apply StepCons1.
@@ -122,7 +116,7 @@ Proof.
            ++ apply step_refl.
         ** apply IHmatching.
 
-  - intros G L A x c c' ps m args D Hexpr IHexpr Heqc St.
+  - intros c c' G L A x con con' ps m args D Hexpr IHexpr Heqc St.
     eapply step_star_trans.
     + eapply step_trans.
       * apply StepCons1.
@@ -133,7 +127,7 @@ Proof.
         ** apply StepFail. assumption.
         ** apply step_refl.
 
-  - intros G L A m1 m2 e D Hmatching IHmatch St.
+  - intros c c' G L A m1 m2 e D Hmatching IHmatch St.
     eapply step_star_trans.
     + eapply step_trans.
       * apply StepAlt1.
@@ -144,7 +138,7 @@ Proof.
         ** apply StepReturn2.
         ** apply step_refl.
 
-  - intros G L A m1 m2 D O u Hmatching1 IHmatch1 Hmatching2 IHmatch2 St.
+  - intros c c1 c2 G L A m1 m2 D O u Hmatching1 IHmatch1 Hmatching2 IHmatch2 St.
     eapply step_star_trans.
     + eapply step_trans.
       * apply StepAlt1.
@@ -157,11 +151,11 @@ Proof.
            ++ constructor.
            ++  apply IHmatch2.
 
-  - intros G L A m binds D u avoid ys Hmatching IHmatch St.
+  - intros c G L A m binds D u ys renamed_binds renamed_m Hys Hbinds Hm Hmatching IHmatch St.
     eapply step_star_trans.
     + constructor.
     + eapply step_trans.
-      * constructor.
-      * admit. (* need better alternative, maybe add an alpha equivalence relation and prove to aeq? *)
-Admitted.
+      * apply StepWhere with (ys := ys); eassumption.
+      * apply IHmatch.
+Qed.
 

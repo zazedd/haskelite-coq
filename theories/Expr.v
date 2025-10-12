@@ -141,3 +141,58 @@ Proof. reflexivity. Qed.
 
 Lemma fail_arity_zero : matching_arity MFail = Some 0.
 Proof. reflexivity. Qed.
+
+(* fresh variable generator context *)
+(* the counter is threaded through evaluation *)
+Parameter gensym : nat -> var.
+
+Axiom gensym_injective : forall n m,
+  gensym n = gensym m -> n = m.
+
+Fixpoint gen_n_fresh (c : nat) (n : nat) : list var :=
+  match n with
+  | 0 => []
+  | S n' => gensym c :: gen_n_fresh (S c) n'
+  end.
+
+Lemma gen_n_fresh_length : forall c n,
+  length (gen_n_fresh c n) = n.
+Proof.
+  intros c n. revert c.
+  induction n; intros c; simpl; auto.
+Qed.
+
+Require Import Lia.
+
+Lemma gen_n_fresh_NoDup : forall c n,
+  NoDup (gen_n_fresh c n).
+Proof.
+  intros c n. revert c.
+  induction n; intros c; simpl.
+  - constructor.
+  - constructor.
+    + intros Hin.
+      induction n; simpl in Hin.
+      * inversion Hin.
+      * destruct Hin as [Heq | Hin'].
+        -- apply gensym_injective in Heq. lia.
+        -- admit.
+    + apply IHn.
+Admitted.
+
+Lemma gen_n_fresh_In : forall c n k,
+  In (gensym k) (gen_n_fresh c n) <-> c <= k < c + n.
+Proof.
+  intros c n. revert c.
+  induction n; intros c k; simpl.
+  - split; intros H.
+    + inversion H.
+    + lia.
+  - split; intros H.
+    + destruct H.
+      * apply gensym_injective in H. subst. lia.
+      * apply IHn in H. lia.
+    + destruct (Nat.eq_dec c k).
+      * left. subst. reflexivity.
+      * right. apply IHn. lia.
+Qed.
