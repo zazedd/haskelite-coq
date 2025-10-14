@@ -159,3 +159,51 @@ Proof.
       * apply IHmatch.
 Qed.
 
+
+Theorem small_step_big_step_expr : forall c0 c1 G D e w St,
+  {| c := c0; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |} s=>*
+  {| c := c1; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |} ->
+  whnf w ->
+  eval_expr c0 G (update_locs St) e D w c1
+with small_step_big_step_matching : forall c0 c1 G D A m u e St,
+  {| c := c0; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} s=>*
+  {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch [] 
+    (match u with MRReturn e => MReturn e | MRFail => MFail end); 
+    cfg_stack := St |} ->
+  eval_matching c0 G (update_locs St) A m D e c1.
+Proof.
+  - intros count0 count1 G D e w St Hsteps Hwhnf.
+    remember {| c := count0; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |} as cfg_start.
+    remember {| c := count1; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |} as cfg_end.
+    generalize dependent w.
+    generalize dependent e.
+    generalize dependent D.
+    generalize dependent G.
+    generalize dependent count1.
+    generalize dependent count0.
+    generalize dependent St.
+    induction Hsteps; intros; subst.
+    + inversion Heqcfg_end; subst. constructor. assumption.
+    + apply (IHHsteps St count0 count1 G D e).
+      * admit.
+      * constructor.
+      * assumption.
+
+  - intros count0 count1 G D A m u e St Hsteps.
+    remember {| c := count0; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} as cfg_start.
+    remember {| c := count1; cfg_heap := D; cfg_ctrl := 
+      CtrlMatch [] (match u with MRReturn e => MReturn e | MRFail => MFail end); 
+      cfg_stack := St |} as cfg_end.
+    generalize dependent u.
+    generalize dependent m.
+    generalize dependent A.
+    generalize dependent D.
+    generalize dependent G.
+    generalize dependent count1.
+    generalize dependent count0.
+    generalize dependent St.
+    induction Hsteps; intros; subst.
+    + inversion Heqcfg_end; subst. admit.
+    + admit.
+Admitted.
+

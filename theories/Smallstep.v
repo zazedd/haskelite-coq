@@ -205,6 +205,22 @@ Definition balanced_matching_eval (c0 : nat) (G : heap) (A : list var) (m : matc
       {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch [] MFail; cfg_stack := St |}
   end.
 
+Fixpoint update_locs (S : stack) : var_set :=
+  match S with
+  | [] => []
+  | KUpdate y :: S' => y :: update_locs S'
+  | _ :: S' => update_locs S'
+  end.
+
+Lemma update_locs_preserved : forall S k,
+  (forall y, k <> KUpdate y) ->
+  update_locs (k :: S) = update_locs S.
+Proof.
+  intros.
+  destruct k; simpl; auto.
+  exfalso. apply (H v). reflexivity.
+Qed.
+
 Lemma map_EVar_inj : forall args1 args2,
       map EVar args1 = map EVar args2 -> args1 = args2.
 Proof.
@@ -252,4 +268,43 @@ Proof.
   induction Hstar.
   - eapply step_trans; eauto. constructor.
   - eapply step_trans; eauto.
+Qed.
+
+Lemma step_star_to_balanced_expr : forall c0 c1 G D e w St,
+  {| c := c0; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |} s=>*
+  {| c := c1; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |} ->
+  whnf w ->
+  balanced_expr_eval c0 G e D w St.
+Proof.
+  intros c0 c1 G D e w St Hstar Hwhnf.
+  unfold balanced_expr_eval.
+  exists c1.
+  induction Hstar.
+  + constructor.
+    * constructor.
+    * assumption.
+  + split.
+    * apply step_star_trans with (c2 := c3).
+      ** apply step_star_step with (e2 := c2); trivial; constructor.
+      ** assumption.
+    * assumption.
+Qed.
+
+Lemma step_star_to_balanced_matching : forall c0 c1 G D A m u St,
+  {| c := c0; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} s=>*
+  {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch []
+        (match u with MRReturn e => MReturn e | MRFail => MFail end);
+      cfg_stack := St |} ->
+  balanced_matching_eval c0 G A m D u St.
+Proof.
+  intros c0 c1 G D A m u St Hstar.
+  unfold balanced_matching_eval.
+  exists c1.
+  destruct u; induction Hstar; simpl; try constructor.
+  - apply step_star_trans with (c2 := c3).
+    + apply step_star_step with (e2 := c2); trivial; constructor.
+    + assumption.
+  - apply step_star_trans with (c2 := c3).
+    + apply step_star_step with (e2 := c2); trivial; constructor.
+    + assumption.
 Qed.

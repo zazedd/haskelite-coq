@@ -3,6 +3,12 @@ From Coq Require Import FMaps FSets.
 From Haskelite Require Import Expr.
 Import ListNotations.
 
+(* type for L, for blackholing *)
+Definition var_set := list var.
+
+Definition in_var_set (x : var) (s : var_set) : bool :=
+  existsb (String.eqb x) s.
+
 Definition bindings := list (var * expr).
 
 Module StringDec <: DecidableType.

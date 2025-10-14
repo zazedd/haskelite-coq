@@ -3,12 +3,6 @@ From Coq Require Import FMaps FSets.
 From Haskelite Require Import Expr Common.
 Import ListNotations.
 
-(* type for L, provides freshness *)
-Definition var_set := list var.
-
-Definition in_var_set (x : var) (s : var_set) : bool :=
-  existsb (String.eqb x) s.
-
 Inductive eval_expr : nat -> heap -> var_set -> expr -> 
                       heap -> expr -> nat -> Prop :=
   | EvalWhnf : forall c G L w,
