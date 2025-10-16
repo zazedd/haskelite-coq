@@ -132,3 +132,12 @@ Proof.
       * apply IHl1; assumption.
 Qed.
 
+Lemma self_nil : forall (A : Type) (x0 St : list A),
+St = x0 ++ St -> x0 = [].
+Proof.
+  intros A x0 St H.
+  symmetry in H.
+  rewrite <- (app_nil_l St) in H.
+  apply app_inv_tail in H.
+  exact H.
+Qed.

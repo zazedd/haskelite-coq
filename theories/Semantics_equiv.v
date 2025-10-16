@@ -23,7 +23,7 @@ Proof.
 Qed.
 
 (* theorem 4.1 *)
-Theorem big_step_impl_small_step :
+Corollary big_step_impl_small_step :
   (forall c G L e D w c',
     eval_expr c G L e D w c' ->
     forall St, {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |} s=>*
@@ -159,51 +159,90 @@ Proof.
       * apply IHmatch.
 Qed.
 
-
-Theorem small_step_big_step_expr : forall c0 c1 G D e w St,
-  {| c := c0; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |} s=>*
-  {| c := c1; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |} ->
-  whnf w ->
-  eval_expr c0 G (update_locs St) e D w c1
-with small_step_big_step_matching : forall c0 c1 G D A m u e St,
-  {| c := c0; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} s=>*
-  {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch [] 
-    (match u with MRReturn e => MReturn e | MRFail => MFail end); 
-    cfg_stack := St |} ->
-  eval_matching c0 G (update_locs St) A m D e c1.
+Lemma self_nil : forall (A : Type) (x0 St : list A),
+St = x0 ++ St -> x0 = [].
 Proof.
-  - intros count0 count1 G D e w St Hsteps Hwhnf.
-    remember {| c := count0; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |} as cfg_start.
-    remember {| c := count1; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |} as cfg_end.
-    generalize dependent w.
-    generalize dependent e.
-    generalize dependent D.
-    generalize dependent G.
-    generalize dependent count1.
-    generalize dependent count0.
-    generalize dependent St.
-    induction Hsteps; intros; subst.
-    + inversion Heqcfg_end; subst. constructor. assumption.
-    + apply (IHHsteps St count0 count1 G D e).
-      * admit.
-      * constructor.
-      * assumption.
+  intros A x0 St H.
+  symmetry in H.
+  rewrite <- (app_nil_l St) in H.
+  apply app_inv_tail in H.
+  exact H.
+Qed.
 
-  - intros count0 count1 G D A m u e St Hsteps.
-    remember {| c := count0; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} as cfg_start.
-    remember {| c := count1; cfg_heap := D; cfg_ctrl := 
-      CtrlMatch [] (match u with MRReturn e => MReturn e | MRFail => MFail end); 
-      cfg_stack := St |} as cfg_end.
-    generalize dependent u.
-    generalize dependent m.
-    generalize dependent A.
-    generalize dependent D.
-    generalize dependent G.
-    generalize dependent count1.
-    generalize dependent count0.
-    generalize dependent St.
-    induction Hsteps; intros; subst.
-    + inversion Heqcfg_end; subst. admit.
-    + admit.
+Theorem small_step_bal_impl_big_step_expr : forall c G e St c' D w,
+  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |} s=( St )=>*
+  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |} ->
+  whnf w ->
+  eval_expr c G (update_locs St) e D w c'.
+Proof.
+  intros c G e St c' D w Hsteps Hwhnf.
+  remember {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |} as cfg_init.
+  remember {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |} as cfg_final.
+  revert c G e D w Heqcfg_init Heqcfg_final Hwhnf.
+  induction Hsteps as [| c1 c2 ]; intros.
+  - subst. injection Heqcfg_final as ? ? Hctrl. subst.
+    constructor. assumption.
+
+  - destruct c1 as [c1_cnt c1_heap c1_ctrl c1_stack].
+    injection Heqcfg_init as Hc_eq Hheap_eq Hctrl_eq Hstack_eq. subst.
+    destruct e as [x | e1 e2 | m | con args]; admit.
 Admitted.
 
+Theorem small_step_bal_impl_big_step_matching :
+  forall c G A m St c' D u,
+    {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} s=( St )=>*
+    {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch [] 
+         (match u with MRReturn e => MReturn e | MRFail => MFail end);
+       cfg_stack := St |} ->
+    eval_matching c G (update_locs St) A m D u c'.
+Proof.
+  intros c G A m St c' D u Hsteps.
+  remember {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} as cfg_init.
+  remember {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch []
+                (match u with MRReturn e => MReturn e | MRFail => MFail end);
+              cfg_stack := St |} as cfg_final.
+  revert c G A m D u Heqcfg_init Heqcfg_final.
+  induction Hsteps; intros; subst.
+  - injection Heqcfg_final as ? ? Hctrl ?. subst.
+    destruct u; constructor.
+
+  - admit.
+Admitted.
+
+Theorem small_step_bal_to_big_step :
+  (forall c G e St c' D w,
+    {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |} s=( St )=>*
+    {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |} ->
+    whnf w ->
+    eval_expr c G (update_locs St) e D w c')
+  /\
+  (forall c G A m St c' D u,
+    {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} s=( St )=>*
+    {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch []
+          (match u with MRReturn e => MReturn e | MRFail => MFail end);
+        cfg_stack := St |} ->
+    eval_matching c G (update_locs St) A m D u c').
+Proof.
+  split.
+  - apply small_step_bal_impl_big_step_expr.
+  - apply small_step_bal_impl_big_step_matching.
+Qed.
+
+Corollary small_step_to_big_step :
+  (forall c G e c' D w,
+    {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := [] |} s=>*
+    {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := [] |} ->
+    whnf w ->
+    eval_expr c G [] e D w c')
+  /\
+  (forall c G A m c' D u,
+    {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := [] |} s=>*
+    {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch []
+          (match u with MRReturn e => MReturn e | MRFail => MFail end);
+        cfg_stack := [] |} ->
+    eval_matching c G [] A m D u c').
+Proof.
+  split; intros;
+  apply step_star_balanced_empty_to_empty in H; try reflexivity;
+  apply small_step_bal_to_big_step in H; assumption.
+Qed.

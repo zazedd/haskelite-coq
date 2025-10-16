@@ -155,25 +155,6 @@ Inductive step_star : config -> config -> Prop :=
       c1 s=>* c3
 where "c1 s=>* c2" := (step_star c1 c2).
 
-Definition extends_stack (S S' : stack) : Prop :=
-  exists prefix, S = prefix ++ S'.
-
-(* Balanced evaluations (4.2) *)
-
-Reserved Notation "c1 s=( St )=>* c2" (at level 40).
-Inductive step_star_bal : config -> config -> stack -> Prop :=
-  | step_refl_bal : forall c, forall St,
-      extends_stack (cfg_stack c) St ->
-      c s=( St )=>* c
-  | step_trans_bal : forall c1 c2 c3, forall St,
-      extends_stack (cfg_stack c1) St ->
-      c1 s=> c2 ->
-      c2 s=( St )=>* c3 ->
-      c1 s=( St )=>* c3
-where "c1 s=( St )=>* c2" := (step_star_bal c1 c2 St).
-
-(* pass instead a prop funct with a notion of stack extensibility *)
-
 Lemma step_star_one : forall c1 c2,
   c1 s=> c2 -> c1 s=>* c2.
 Proof.
@@ -201,6 +182,69 @@ Definition is_stuck (c : config) : Prop :=
   cfg_ctrl c = CtrlMatch [] MFail /\
   exists S, cfg_stack c = KEnd :: S.
 
+Definition extends_stack (S S' : stack) : Prop :=
+  exists prefix, S = prefix ++ S'.
+
+Lemma extends_stack_refl : forall S,
+  extends_stack S S.
+Proof.
+  intros. unfold extends_stack. exists []. reflexivity.
+Qed.
+
+Lemma extends_stack_trans : forall S1 S2 S3,
+  extends_stack S1 S2 ->
+  extends_stack S2 S3 ->
+  extends_stack S1 S3.
+Proof.
+  intros S1 S2 S3 [p1 H1] [p2 H2].
+  unfold extends_stack.
+  exists (p1 ++ p2).
+  rewrite H1, H2.
+  rewrite app_assoc.
+  reflexivity.
+Qed.
+
+Lemma extends_stack_cons : forall k S S',
+  extends_stack S S' ->
+  extends_stack (k :: S) S'.
+Proof.
+  intros k S S' [prefix Hext].
+  unfold extends_stack.
+  exists (k :: prefix).
+  simpl. rewrite Hext.
+  reflexivity.
+Qed.
+
+(* Balanced evaluations (4.2) *)
+
+Reserved Notation "c1 s=( St )=>* c2" (at level 40).
+Inductive step_star_bal : config -> config -> stack -> Prop :=
+  | step_refl_bal : forall c, forall St,
+      extends_stack (cfg_stack c) St ->
+      c s=( St )=>* c
+  | step_trans_bal : forall c1 c2 c3, forall St,
+      extends_stack (cfg_stack c1) St ->
+      c1 s=> c2 ->
+      c2 s=( St )=>* c3 ->
+      c1 s=( St )=>* c3
+where "c1 s=( St )=>* c2" := (step_star_bal c1 c2 St).
+
+Lemma step_star_bal_one : forall c1 c2 St,
+  extends_stack (cfg_stack c1) St ->
+  extends_stack (cfg_stack c2) St ->
+  c1 s=> c2 -> c1 s=( St )=>* c2.
+Proof.
+  intros. eapply step_trans_bal; eauto. constructor. assumption.
+Qed.
+
+Lemma step_star_bal_trans : forall c1 c2 c3 St,
+  c1 s=( St )=>* c2 -> c2 s=( St )=>* c3 -> c1 s=( St )=>* c3.
+Proof.
+  intros. induction H.
+  - assumption.
+  - eapply step_trans_bal; eauto.
+Qed.
+
 Fixpoint update_locs (S : stack) : var_set :=
   match S with
   | [] => []
@@ -215,6 +259,44 @@ Proof.
   intros.
   destruct k; simpl; auto.
   exfalso. apply (H v). reflexivity.
+Qed.
+
+Lemma update_locs_app : forall S1 S2,
+  update_locs (S1 ++ S2) = update_locs S1 ++ update_locs S2.
+Proof.
+  intros S1. induction S1; intros S2; simpl.
+  - reflexivity.
+  - destruct a; simpl; auto.
+    rewrite IHS1. reflexivity.
+Qed.
+
+Lemma update_locs_KEnd : forall S,
+  update_locs (KEnd :: S) = update_locs S.
+Proof. reflexivity. Qed.
+
+Lemma update_locs_KArg : forall y S,
+  update_locs (KArg y :: S) = update_locs S.
+Proof. reflexivity. Qed.
+
+Lemma update_locs_KAlt : forall A m S,
+  update_locs (KAlt A m :: S) = update_locs S.
+Proof. reflexivity. Qed.
+
+Lemma update_locs_KPat : forall A con ps m S,
+  update_locs (KPat A con ps m :: S) = update_locs S.
+Proof. reflexivity. Qed.
+
+Lemma update_locs_KUpdate : forall y S,
+  update_locs (KUpdate y :: S) = y :: update_locs S.
+Proof. reflexivity. Qed.
+
+Lemma extends_stack_update_locs : forall S S',
+  extends_stack S S' ->
+  exists L', update_locs S = L' ++ update_locs S'.
+Proof.
+  intros S S' [p Hp].
+  subst. rewrite update_locs_app.
+  exists (update_locs p). reflexivity.
 Qed.
 
 Lemma map_EVar_inj : forall args1 args2,
@@ -282,8 +364,7 @@ Proof.
   + eapply step_trans; eauto.
 Qed.
 
-Lemma star_to_balanced_empty_end :
-  forall c1 c2,
+Lemma star_to_balanced_empty_end : forall c1 c2,
   c1 s=>* c2 ->
   cfg_stack c2 = [] ->
   c1 s=( [] )=>* c2.
@@ -306,4 +387,33 @@ Proof.
   - apply star_to_balanced_empty_end; assumption.
   - eapply balanced_implies_star. exact H1.
 Qed.
+
+(* inversion lemams for balanced *)
+
+Lemma step_star_bal_inv_whnf : forall c G w St S,
+  whnf w ->
+  extends_stack St S ->
+  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr w; cfg_stack := St |} s=( S )=>*
+  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr w; cfg_stack := St |}.
+Proof. intros. constructor. assumption. Qed.
+
+Lemma step_sat_analysis : forall c G m St c' D w,
+  matching_arity m = Some 0 ->
+  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr (ELam m); cfg_stack := St |} s=( St )=>*
+  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |} ->
+  whnf w ->
+  exists c1 D1 e,
+    {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch [] m; cfg_stack := KEnd :: St |} s=( KEnd :: St )=>*
+    {| c := c1; cfg_heap := D1; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := KEnd :: St |} /\
+    {| c := c1; cfg_heap := D1; cfg_ctrl := CtrlExpr e; cfg_stack := St |} s=( St )=>*
+    {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |}.
+Proof.
+  intros.
+  inversion H0; subst; auto.
+  - inversion H1. rewrite H3 in H. discriminate.
+  - exists c', D, w.
+    split.
+    + admit.
+    + constructor. simpl. apply extends_stack_refl.
+Admitted.
 
