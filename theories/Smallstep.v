@@ -155,6 +155,25 @@ Inductive step_star : config -> config -> Prop :=
       c1 s=>* c3
 where "c1 s=>* c2" := (step_star c1 c2).
 
+Definition extends_stack (S S' : stack) : Prop :=
+  exists prefix, S = prefix ++ S'.
+
+(* Balanced evaluations (4.2) *)
+
+Reserved Notation "c1 s=( St )=>* c2" (at level 40).
+Inductive step_star_bal : config -> config -> stack -> Prop :=
+  | step_refl_bal : forall c, forall St,
+      extends_stack (cfg_stack c) St ->
+      c s=( St )=>* c
+  | step_trans_bal : forall c1 c2 c3, forall St,
+      extends_stack (cfg_stack c1) St ->
+      c1 s=> c2 ->
+      c2 s=( St )=>* c3 ->
+      c1 s=( St )=>* c3
+where "c1 s=( St )=>* c2" := (step_star_bal c1 c2 St).
+
+(* pass instead a prop funct with a notion of stack extensibility *)
+
 Lemma step_star_one : forall c1 c2,
   c1 s=> c2 -> c1 s=>* c2.
 Proof.
@@ -181,29 +200,6 @@ Definition is_final_expr (c : config) : Prop :=
 Definition is_stuck (c : config) : Prop :=
   cfg_ctrl c = CtrlMatch [] MFail /\
   exists S, cfg_stack c = KEnd :: S.
-
-(* Balanced evaluations (4.2) *)
-
-Definition extends_stack (S S' : stack) : Prop :=
-  exists prefix, S' = prefix ++ S.
-
-Definition balanced_expr_eval (c0 : nat) (G : heap) (e : expr) (D : heap) (w : expr) (St : stack) : Prop :=
-  exists c1,
-  {| c := c0; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |} s=>*
-  {| c := c1; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |} /\
-  whnf w.
-
-Definition balanced_matching_eval (c0 : nat) (G : heap) (A : list var) (m : matching)
-                                  (D : heap) (u : matching_result) (St : stack) : Prop :=
-  exists c1,
-  match u with
-  | MRReturn e =>
-      {| c := c0; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} s=>*
-      {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := St |}
-  | MRFail =>
-      {| c := c0; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} s=>*
-      {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch [] MFail; cfg_stack := St |}
-  end.
 
 Fixpoint update_locs (S : stack) : var_set :=
   match S with
@@ -270,41 +266,44 @@ Proof.
   - eapply step_trans; eauto.
 Qed.
 
-Lemma step_star_to_balanced_expr : forall c0 c1 G D e w St,
-  {| c := c0; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |} s=>*
-  {| c := c1; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |} ->
-  whnf w ->
-  balanced_expr_eval c0 G e D w St.
+Lemma any_stack_extends_empty : forall s,
+  extends_stack s [].
 Proof.
-  intros c0 c1 G D e w St Hstar Hwhnf.
-  unfold balanced_expr_eval.
-  exists c1.
-  induction Hstar.
-  + constructor.
-    * constructor.
-    * assumption.
-  + split.
-    * apply step_star_trans with (c2 := c3).
-      ** apply step_star_step with (e2 := c2); trivial; constructor.
-      ** assumption.
-    * assumption.
+  intros. unfold extends_stack. exists s.
+  rewrite app_nil_r. reflexivity.
 Qed.
 
-Lemma step_star_to_balanced_matching : forall c0 c1 G D A m u St,
-  {| c := c0; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} s=>*
-  {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch []
-        (match u with MRReturn e => MReturn e | MRFail => MFail end);
-      cfg_stack := St |} ->
-  balanced_matching_eval c0 G A m D u St.
+Lemma balanced_implies_star : forall c1 c2 St,
+  c1 s=( St )=>* c2 ->
+  c1 s=>* c2.
 Proof.
-  intros c0 c1 G D A m u St Hstar.
-  unfold balanced_matching_eval.
-  exists c1.
-  destruct u; induction Hstar; simpl; try constructor.
-  - apply step_star_trans with (c2 := c3).
-    + apply step_star_step with (e2 := c2); trivial; constructor.
-    + assumption.
-  - apply step_star_trans with (c2 := c3).
-    + apply step_star_step with (e2 := c2); trivial; constructor.
-    + assumption.
+  intros. induction H.
+  + constructor.
+  + eapply step_trans; eauto.
 Qed.
+
+Lemma star_to_balanced_empty_end :
+  forall c1 c2,
+  c1 s=>* c2 ->
+  cfg_stack c2 = [] ->
+  c1 s=( [] )=>* c2.
+Proof.
+  intros c1 c2 Hstar.
+  induction Hstar; intro Hst2.
+  - constructor. apply any_stack_extends_empty.
+  - eapply step_trans_bal.
+    * apply any_stack_extends_empty.
+    * exact H.
+    * apply IHHstar. exact Hst2.
+Qed.
+
+Lemma step_star_balanced_empty_to_empty : forall c1 c2,
+  cfg_stack c1 = [] ->
+  cfg_stack c2 = [] ->
+  c1 s=>* c2 <-> c1 s=( [] )=>* c2.
+Proof.
+  intros. split; intros.
+  - apply star_to_balanced_empty_end; assumption.
+  - eapply balanced_implies_star. exact H1.
+Qed.
+
