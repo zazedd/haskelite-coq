@@ -388,8 +388,6 @@ Proof.
   - eapply balanced_implies_star. exact H1.
 Qed.
 
-(* inversion lemams for balanced *)
-
 Lemma step_star_bal_inv_whnf : forall c G w St S,
   whnf w ->
   extends_stack St S ->
@@ -397,23 +395,84 @@ Lemma step_star_bal_inv_whnf : forall c G w St S,
   {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr w; cfg_stack := St |}.
 Proof. intros. constructor. assumption. Qed.
 
-Lemma step_sat_analysis : forall c G m St c' D w,
-  matching_arity m = Some 0 ->
-  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr (ELam m); cfg_stack := St |} s=( St )=>*
-  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |} ->
-  whnf w ->
-  exists c1 D1 e,
-    {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch [] m; cfg_stack := KEnd :: St |} s=( KEnd :: St )=>*
-    {| c := c1; cfg_heap := D1; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := KEnd :: St |} /\
-    {| c := c1; cfg_heap := D1; cfg_ctrl := CtrlExpr e; cfg_stack := St |} s=( St )=>*
-    {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |}.
+Lemma step_star_bal_extends_stack : forall c1 c2 St,
+  c1 s=( St )=>* c2 ->
+  extends_stack (cfg_stack c1) St /\
+  extends_stack (cfg_stack c2) St.
 Proof.
-  intros.
-  inversion H0; subst; auto.
-  - inversion H1. rewrite H3 in H. discriminate.
-  - exists c', D, w.
-    split.
-    + admit.
-    + constructor. simpl. apply extends_stack_refl.
-Admitted.
+  intros c1 c2 St H.
+  induction H.
+  - split; assumption.
+  - destruct IHstep_star_bal.
+    split; assumption.
+Qed.
 
+Lemma cons_self_contra {A} (x : A) (xs : list A) :
+  x :: xs <> xs.
+Proof.
+  induction xs as [| y ys IH].
+  - discriminate.
+  - simpl. intro H. injection H as H1 H2. subst.
+    apply IH. assumption.
+Qed.
+
+(* when we step through KUpdate, the heap gets updated and stack shrinks *)
+Lemma step_bal_through_KUpdate : forall c G w y St c' D w',
+  whnf w ->
+  extends_stack (KUpdate y :: St) St ->
+
+  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr w; cfg_stack := KUpdate y :: St |} s=( St )=>*
+  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w'; cfg_stack := St |} ->
+
+  {| c := c; cfg_heap := heap_update G y w; cfg_ctrl := CtrlExpr w; cfg_stack := St |} s=( St )=>*
+  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w'; cfg_stack := St |}.
+Proof.
+  intros c G w y St c' D w' Hwhnf Hext Hseq.
+  inversion Hseq as [| c1 c2 c3 St' Hext1 Hstep Hseq2]; subst.
+  - apply cons_self_contra in H4. contradiction.
+  - inversion Hstep; subst; try solve [inversion Hwhnf]; try congruence.
+    inversion Hwhnf.
+    rewrite H4 in H0. discriminate.
+Qed.
+
+Lemma step_star_bal_ind2 :
+  forall (P : config -> config -> stack -> Prop),
+  (* Base case: reflexive steps *)
+  (forall c St, extends_stack (cfg_stack c) St -> P c c St) ->
+  (* Inductive case: one step followed by balanced sequence *)
+  (forall c1 c2 c3 St,
+      extends_stack (cfg_stack c1) St ->
+      c1 s=> c2 ->
+      c2 s=( St )=>* c3 ->
+      P c2 c3 St ->
+      P c1 c3 St) ->
+  forall c1 c2 St, c1 s=( St )=>* c2 -> P c1 c2 St.
+Proof.
+  intros P base step.
+  fix IH 4. intros c1 c2 St Hbal.
+  inversion Hbal; subst.
+  - apply base. assumption.
+  - eapply step; eauto.
+Qed.
+
+Print step_star_bal_ind.
+Print step_star_bal_ind2.
+
+Lemma balanced_decomposes_update : forall c G e x St_init St_outer c' D w St_final,
+  extends_stack (KUpdate x :: St_init) St_outer ->
+  extends_stack St_final St_outer ->
+  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := KUpdate x :: St_init |} 
+    s=( St_outer )=>*
+  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St_final |} ->
+  whnf w ->
+  (* The KUpdate must be popped, so St_final has fewer updates than KUpdate x :: St_init *)
+  (exists L_prefix', update_locs (KUpdate x :: St_init) = L_prefix' ++ update_locs St_final) ->
+  (* Then there exists an intermediate heap G' where we reach whnf before the update *)
+  exists G' c1,
+    {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := KUpdate x :: St_init |} 
+      s=( St_outer )=>*
+    {| c := c1; cfg_heap := G'; cfg_ctrl := CtrlExpr w; cfg_stack := KUpdate x :: St_init |} /\
+    D = heap_update G' x w /\
+    c' = c1.
+Proof.
+Admitted.

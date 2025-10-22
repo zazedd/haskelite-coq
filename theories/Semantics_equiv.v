@@ -23,7 +23,7 @@ Proof.
 Qed.
 
 (* theorem 4.1 *)
-Corollary big_step_impl_small_step :
+Theorem big_step_impl_small_step :
   (forall c G L e D w c',
     eval_expr c G L e D w c' ->
     forall St, {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |} s=>*
@@ -159,14 +159,86 @@ Proof.
       * apply IHmatch.
 Qed.
 
-Lemma self_nil : forall (A : Type) (x0 St : list A),
-St = x0 ++ St -> x0 = [].
+Lemma balanced_through_update : forall c G e x St_inner St c' D w,
+  extends_stack (KUpdate x :: St_inner) St ->
+  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := KUpdate x :: St_inner |} 
+    s=( St )=>*
+  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St_inner |} ->
+  whnf w ->
+  exists G',
+    (* Evaluate e to whnf w with KUpdate still on stack *)
+    {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := KUpdate x :: St_inner |} 
+      s=( St )=>*
+    {| c := c'; cfg_heap := G'; cfg_ctrl := CtrlExpr w; cfg_stack := KUpdate x :: St_inner |} /\
+    (* After StepUpdate, we get D *)
+    D = heap_update G' x w.
+Proof. Admitted.
+
+Theorem small_to_big_strengthened_expr_gen : forall c G e St_init St_outer c' D w St_final,
+  extends_stack St_init St_outer ->
+  extends_stack St_final St_outer ->
+  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St_init |} s=( St_outer )=>*
+  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St_final |} ->
+  whnf w ->
+  (exists L_prefix, update_locs St_init = L_prefix ++ update_locs St_final) ->
+  eval_expr c G (update_locs St_init) e D w c'.
 Proof.
-  intros A x0 St H.
-  symmetry in H.
-  rewrite <- (app_nil_l St) in H.
-  apply app_inv_tail in H.
-  exact H.
+  intros c G e St_init St_outer c' D w St_final Hext_init Hext_final Hsteps Hwhnf [L_prefix Hupdates].
+  remember {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St_init |} as cfg_init.
+  remember {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St_final |} as cfg_final.
+  revert c G e D w c' St_init St_final Heqcfg_init Heqcfg_final Hwhnf Hext_init Hext_final L_prefix Hupdates.
+  induction Hsteps; intros.
+  - subst. injection Heqcfg_final as ? ? Hctrl; subst.
+    constructor. assumption.
+
+  - subst.
+    destruct e as [x | e1 e2 | m | con args].
+    + inversion H0; subst; try solve [inversion H6].
+      simpl in *.
+      assert (Hupdates_new : update_locs (KUpdate x :: St_init) = x :: update_locs St_init).
+      { rewrite update_locs_KUpdate. reflexivity. }
+
+      rewrite Hupdates in Hupdates_new.
+      rewrite app_comm_cons in Hupdates_new.
+      assert (Hext_new : extends_stack (KUpdate x :: St_init) St).
+      { apply extends_stack_cons. assumption. }
+
+      destruct (balanced_decomposes_update c (heap_remove G x) e x St_init St
+                                       c' D w St_final
+                                       Hext_new Hext_final Hsteps Hwhnf)
+        as [G' [c1 [Hsteps_to_whnf [HeqD Heqc]]]].
+      { exists (x :: L_prefix). exact Hupdates_new. }
+
+      subst D c'.
+
+      specialize (IHHsteps c (heap_remove G x) e (heap_update G' x w) w c1
+                       (KUpdate x :: St_init) St_final
+                       eq_refl eq_refl Hwhnf Hext_new Hext_final
+                       (x :: L_prefix) Hupdates_new).
+
+      rewrite update_locs_KUpdate in IHHsteps.
+
+      assert (HnotIn : ~In x (update_locs St_init)). {
+        (* black-hole prevention invariant needed here *)
+        admit.
+      }
+
+      eapply EvalVar.
+      * eassumption.
+      * exact HnotIn.
+      * admit.
+Admitted.
+
+Theorem small_to_big_strengthened_expr : forall c G e St_inner St_outer c' D w,
+  extends_stack St_inner St_outer ->
+  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St_inner |} s=( St_outer )=>*
+  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St_inner |} ->
+  whnf w ->
+  eval_expr c G (update_locs St_inner) e D w c'.
+Proof.
+  intros.
+  eapply small_to_big_strengthened_expr_gen; eauto.
+  exists []. simpl. reflexivity.
 Qed.
 
 Theorem small_step_bal_impl_big_step_expr : forall c G e St c' D w,
@@ -175,18 +247,10 @@ Theorem small_step_bal_impl_big_step_expr : forall c G e St c' D w,
   whnf w ->
   eval_expr c G (update_locs St) e D w c'.
 Proof.
-  intros c G e St c' D w Hsteps Hwhnf.
-  remember {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |} as cfg_init.
-  remember {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |} as cfg_final.
-  revert c G e D w Heqcfg_init Heqcfg_final Hwhnf.
-  induction Hsteps as [| c1 c2 ]; intros.
-  - subst. injection Heqcfg_final as ? ? Hctrl. subst.
-    constructor. assumption.
-
-  - destruct c1 as [c1_cnt c1_heap c1_ctrl c1_stack].
-    injection Heqcfg_init as Hc_eq Hheap_eq Hctrl_eq Hstack_eq. subst.
-    destruct e as [x | e1 e2 | m | con args]; admit.
-Admitted.
+  intros.
+  eapply small_to_big_strengthened_expr; eauto.
+  apply extends_stack_refl.
+Qed.
 
 Theorem small_step_bal_impl_big_step_matching :
   forall c G A m St c' D u,
