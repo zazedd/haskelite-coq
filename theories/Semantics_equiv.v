@@ -159,154 +159,134 @@ Proof.
       * apply IHmatch.
 Qed.
 
-Lemma balanced_through_update : forall c G e x St_inner St c' D w,
-  extends_stack (KUpdate x :: St_inner) St ->
-  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := KUpdate x :: St_inner |} 
-    s=( St )=>*
-  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St_inner |} ->
-  whnf w ->
-  exists G',
-    (* Evaluate e to whnf w with KUpdate still on stack *)
-    {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := KUpdate x :: St_inner |} 
-      s=( St )=>*
-    {| c := c'; cfg_heap := G'; cfg_ctrl := CtrlExpr w; cfg_stack := KUpdate x :: St_inner |} /\
-    (* After StepUpdate, we get D *)
-    D = heap_update G' x w.
-Proof. Admitted.
-
-Theorem small_to_big_strengthened_expr_gen : forall c G e St_init St_outer c' D w St_final,
-  extends_stack St_init St_outer ->
-  extends_stack St_final St_outer ->
-  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St_init |} s=( St_outer )=>*
-  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St_final |} ->
-  whnf w ->
-  (exists L_prefix, update_locs St_init = L_prefix ++ update_locs St_final) ->
-  eval_expr c G (update_locs St_init) e D w c'.
+Lemma cons_self_contra {A} (x : A) (xs : list A) :
+  x :: xs <> xs.
 Proof.
-  intros c G e St_init St_outer c' D w St_final Hext_init Hext_final Hsteps Hwhnf [L_prefix Hupdates].
-  remember {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St_init |} as cfg_init.
-  remember {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St_final |} as cfg_final.
-  revert c G e D w c' St_init St_final Heqcfg_init Heqcfg_final Hwhnf Hext_init Hext_final L_prefix Hupdates.
-  induction Hsteps; intros.
-  - subst. injection Heqcfg_final as ? ? Hctrl; subst.
-    constructor. assumption.
+  induction xs as [| y ys IH].
+  - discriminate.
+  - intros H. injection H as H1 H2. subst. auto.
+Qed.
 
-  - subst.
-    destruct e as [x | e1 e2 | m | con args].
-    + inversion H0; subst; try solve [inversion H6].
-      simpl in *.
-      assert (Hupdates_new : update_locs (KUpdate x :: St_init) = x :: update_locs St_init).
-      { rewrite update_locs_KUpdate. reflexivity. }
+Ltac list_contradiction :=
+  match goal with
+  | H : ?L <> ?L |- _ => contradiction
+  | H : _ :: ?L = ?L |- _ => apply cons_self_contra in H; contradiction
+  | H : ?L = _ :: ?L |- _ => symmetry in H; apply cons_self_contra in H; contradiction
+  end.
 
-      rewrite Hupdates in Hupdates_new.
-      rewrite app_comm_cons in Hupdates_new.
-      assert (Hext_new : extends_stack (KUpdate x :: St_init) St).
-      { apply extends_stack_cons. assumption. }
+Lemma balanced_step_to_bigstep_expr : forall c G e D w St c',
+  balanced_step_expr
+    {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |}
+    {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |} ->
+  whnf w ->
+  eval_expr c G (update_locs St) e D w c'
 
-      destruct (balanced_decomposes_update c (heap_remove G x) e x St_init St
-                                       c' D w St_final
-                                       Hext_new Hext_final Hsteps Hwhnf)
-        as [G' [c1 [Hsteps_to_whnf [HeqD Heqc]]]].
-      { exists (x :: L_prefix). exact Hupdates_new. }
-
-      subst D c'.
-
-      specialize (IHHsteps c (heap_remove G x) e (heap_update G' x w) w c1
-                       (KUpdate x :: St_init) St_final
-                       eq_refl eq_refl Hwhnf Hext_new Hext_final
-                       (x :: L_prefix) Hupdates_new).
-
-      rewrite update_locs_KUpdate in IHHsteps.
-
-      assert (HnotIn : ~In x (update_locs St_init)). {
-        (* black-hole prevention invariant needed here *)
-        admit.
+with balanced_step_to_bigstep_matching : forall c G A m D u St c',
+  balanced_step_matching
+    {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |}
+    {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch A u; cfg_stack := St |} ->
+  matching_final u ->
+  match u with
+  | MReturn e => eval_matching c G (update_locs St) A m D (MRReturn e) c'
+  | MFail => A = [] /\ eval_matching c G (update_locs St) A m D MRFail c'
+  | _ => False
+  end.
+Proof.
+  - intros c G e D w St c' Hbal Hwhnf.
+    inversion Hbal; subst.
+    + constructor. assumption.
+    + (* BExprApp *)
+      assert (Heval1 : eval_expr c G (update_locs (KArg y :: St)) e0 D0 (ELam m) c1). {
+        apply balanced_step_to_bigstep_expr with (St := KArg y :: St) (c' := c1).
+        - auto.
+        - admit.
       }
 
-      eapply EvalVar.
-      * eassumption.
-      * exact HnotIn.
+      assert (Heval2 : eval_expr c1 D0 (update_locs St) (ELam (MSupply (EVar y) m)) D w c').
+      { apply balanced_step_to_bigstep_expr with (St := St) (c' := c'); assumption. }
+
+      simpl in Heval1.
+      eapply EvalApp; eauto.
+
+    + (* BExprVar *)
+      assert (Heval : eval_expr c (heap_remove G y) (update_locs (KUpdate y :: St)) e0 D0 w c').
+      { apply balanced_step_to_bigstep_expr with (St := KUpdate y :: St) (c' := c'); auto. }
+
+      simpl in Heval. rewrite <- update_locs_KUpdate in Heval.
+      eapply EvalVar; eauto.
+      (* missing blakholing invariant *)
+      admit.
+
+    + (* BExprSat *)
+      assert (Hmatch : eval_matching c G (update_locs (KEnd :: St)) [] m D0 (MRReturn e0) c1). { 
+        assert (Hmatch' := balanced_step_to_bigstep_matching c G [] m D0 (MReturn e0) (KEnd :: St) c1 H8).
+        simpl in Hmatch'. apply Hmatch'. apply MFinal_Return. 
+      }
+
+      assert (Heval : eval_expr c1 D0 (update_locs St) e0 D w c'). {
+        apply balanced_step_to_bigstep_expr with (St := St) (c' := c').
+        - auto.
+        - assumption.
+      }
+
+      eapply EvalSat; eauto.
+
+  - intros c G A m D u St c' Hbal Hfinal.
+    destruct u; try (exfalso; inversion Hfinal; fail).
+    + (* MReturn *)
+      inversion Hbal; subst; try discriminate; try list_contradiction.
+      * constructor.
+      * assert (Heval : eval_matching c G (update_locs (KAlt [] m2 :: St)) [] m1 D (MRReturn e) c').
+        { apply (balanced_step_to_bigstep_matching c G [] m1 D (MReturn e) (KAlt [] m2 :: St) c'); auto. }
+
+        simpl in Heval.
+        eapply EvalAltLeft. exact Heval.
+      * admit.
+
+      * set (renamed_binds := rename_bindings binds (gen_n_fresh c (Datatypes.length binds))).
+        set (renamed_m := rename_matching m0 (gen_n_fresh c (Datatypes.length binds)) binds).
+        assert (Heval :
+          eval_matching (c + length binds) (allocate_bindings G renamed_binds) (update_locs St) A renamed_m 
+          D (MRReturn e) (c + length binds)).
+        {
+          apply (balanced_step_to_bigstep_matching (c + length binds) (allocate_bindings G renamed_binds) A renamed_m
+                 D (MReturn e) St (c + length binds)); auto.
+        }
+
+        eapply EvalWhere; eauto.
+
+    + (* MFail *)
+      inversion Hbal; subst; try discriminate; try list_contradiction.
+      * admit.
       * admit.
 Admitted.
 
-Theorem small_to_big_strengthened_expr : forall c G e St_inner St_outer c' D w,
-  extends_stack St_inner St_outer ->
-  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St_inner |} s=( St_outer )=>*
-  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St_inner |} ->
+
+Theorem small_step_impl_bigstep_expr : forall e D w c',
+  initial_config e s=>* {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := [] |} ->
   whnf w ->
-  eval_expr c G (update_locs St_inner) e D w c'.
+  eval_expr 0 empty_heap (update_locs []) e D w c'
+
+with small_step_impl_bigstep_matching : forall A m D u c',
+  {| c := 0; cfg_heap := empty_heap; cfg_ctrl := CtrlMatch A m; cfg_stack := [] |} s=>* 
+  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch A u; cfg_stack := [] |} ->
+  matching_final u ->
+  match u with
+  | MReturn e => eval_matching 0 empty_heap (update_locs []) A m D (MRReturn e) c'
+  | MFail => A = [] /\ eval_matching 0 empty_heap (update_locs []) A m D MRFail c'
+  | _ => False
+  end.
 Proof.
-  intros.
-  eapply small_to_big_strengthened_expr_gen; eauto.
-  exists []. simpl. reflexivity.
+  - intros e D w c' Hsteps Hwhnf.
+    apply balanced_step_to_bigstep_expr.
+    + unfold initial_config in Hsteps. apply steps_to_balanced_expr in Hsteps. assumption.
+    + assumption.
+
+  - intros A m D u c' Hsteps Hu.
+    apply balanced_step_to_bigstep_matching.
+    + unfold initial_config in Hsteps. apply steps_to_balanced_matching in Hsteps. assumption.
+    + assumption.
 Qed.
 
-Theorem small_step_bal_impl_big_step_expr : forall c G e St c' D w,
-  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |} s=( St )=>*
-  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |} ->
-  whnf w ->
-  eval_expr c G (update_locs St) e D w c'.
-Proof.
-  intros.
-  eapply small_to_big_strengthened_expr; eauto.
-  apply extends_stack_refl.
-Qed.
 
-Theorem small_step_bal_impl_big_step_matching :
-  forall c G A m St c' D u,
-    {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} s=( St )=>*
-    {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch [] 
-         (match u with MRReturn e => MReturn e | MRFail => MFail end);
-       cfg_stack := St |} ->
-    eval_matching c G (update_locs St) A m D u c'.
-Proof.
-  intros c G A m St c' D u Hsteps.
-  remember {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} as cfg_init.
-  remember {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch []
-                (match u with MRReturn e => MReturn e | MRFail => MFail end);
-              cfg_stack := St |} as cfg_final.
-  revert c G A m D u Heqcfg_init Heqcfg_final.
-  induction Hsteps; intros; subst.
-  - injection Heqcfg_final as ? ? Hctrl ?. subst.
-    destruct u; constructor.
 
-  - admit.
-Admitted.
-
-Theorem small_step_bal_to_big_step :
-  (forall c G e St c' D w,
-    {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |} s=( St )=>*
-    {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |} ->
-    whnf w ->
-    eval_expr c G (update_locs St) e D w c')
-  /\
-  (forall c G A m St c' D u,
-    {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} s=( St )=>*
-    {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch []
-          (match u with MRReturn e => MReturn e | MRFail => MFail end);
-        cfg_stack := St |} ->
-    eval_matching c G (update_locs St) A m D u c').
-Proof.
-  split.
-  - apply small_step_bal_impl_big_step_expr.
-  - apply small_step_bal_impl_big_step_matching.
-Qed.
-
-Corollary small_step_to_big_step :
-  (forall c G e c' D w,
-    {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := [] |} s=>*
-    {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := [] |} ->
-    whnf w ->
-    eval_expr c G [] e D w c')
-  /\
-  (forall c G A m c' D u,
-    {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := [] |} s=>*
-    {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch []
-          (match u with MRReturn e => MReturn e | MRFail => MFail end);
-        cfg_stack := [] |} ->
-    eval_matching c G [] A m D u c').
-Proof.
-  split; intros;
-  apply step_star_balanced_empty_to_empty in H; try reflexivity;
-  apply small_step_bal_to_big_step in H; assumption.
-Qed.

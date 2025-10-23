@@ -63,6 +63,11 @@ Inductive matching_result : Type :=
   | MRReturn : expr -> matching_result    (* ⌈e⌉ *)
   | MRFail : matching_result.             (* ⊥ *)
 
+(* establish syntatic equivalence *)
+Inductive matching_final : matching -> Prop :=
+  | MFinal_Return : forall e, matching_final (MReturn e)
+  | MFinal_Fail : matching_final MFail.
+
 (** Arity preservation *)
 
 Lemma matching_arity_where : forall m binds,

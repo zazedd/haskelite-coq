@@ -169,6 +169,56 @@ Proof.
   - eapply step_trans; eauto.
 Qed.
 
+Lemma map_EVar_inj : forall args1 args2,
+      map EVar args1 = map EVar args2 -> args1 = args2.
+Proof.
+  intros.
+  apply map_injective in H; auto.
+  intros. inversion H0. reflexivity.
+Qed.
+
+Ltac solve_determinism_small :=
+  match goal with
+  | [ H1 : CtrlExpr ?e = CtrlExpr ?e2,
+      H2 : whnf ?w |- _ ] =>
+      inversion H1; subst;
+      inversion H2; subst;
+      try (match goal with
+           | [ H1 : matching_arity ?m = Some 0,
+               H2 : matching_arity ?m = Some (S ?n) |- _ ] =>
+               rewrite H1 in H2; discriminate
+           end)
+  end.
+
+Lemma small_step_deterministic : forall e e1 e2,
+  e s=> e1 -> e s=> e2 -> e1 = e2.
+Proof.
+  intros e e1 e2 H1 H2.
+  destruct e as [G ctrl St].
+  inversion H1; inversion H2; subst;
+  (* this generates lots of cases. most of them solvable by congruence*)
+  try congruence;
+  (* others solved by proving that the whnf is impossible *)
+  try solve_determinism_small.
+
+  inversion H10; subst.
+  apply map_EVar_inj in H3; subst.
+  inversion H11; subst.
+  reflexivity.
+Qed.
+
+Lemma step_star_step : forall e1 e2 e3,
+  e1 s=>* e2 ->
+  e2 s=> e3 ->
+  e1 s=>* e3.
+Proof.
+  intros e1 e2 e3 Hstar Hstep.
+  induction Hstar.
+  - eapply step_trans; eauto. constructor.
+  - eapply step_trans; eauto.
+Qed.
+
+
 Definition initial_config (e : expr) : config :=
   {| c := 0;
      cfg_heap := empty_heap;
@@ -216,34 +266,6 @@ Proof.
 Qed.
 
 (* Balanced evaluations (4.2) *)
-
-Reserved Notation "c1 s=( St )=>* c2" (at level 40).
-Inductive step_star_bal : config -> config -> stack -> Prop :=
-  | step_refl_bal : forall c, forall St,
-      extends_stack (cfg_stack c) St ->
-      c s=( St )=>* c
-  | step_trans_bal : forall c1 c2 c3, forall St,
-      extends_stack (cfg_stack c1) St ->
-      c1 s=> c2 ->
-      c2 s=( St )=>* c3 ->
-      c1 s=( St )=>* c3
-where "c1 s=( St )=>* c2" := (step_star_bal c1 c2 St).
-
-Lemma step_star_bal_one : forall c1 c2 St,
-  extends_stack (cfg_stack c1) St ->
-  extends_stack (cfg_stack c2) St ->
-  c1 s=> c2 -> c1 s=( St )=>* c2.
-Proof.
-  intros. eapply step_trans_bal; eauto. constructor. assumption.
-Qed.
-
-Lemma step_star_bal_trans : forall c1 c2 c3 St,
-  c1 s=( St )=>* c2 -> c2 s=( St )=>* c3 -> c1 s=( St )=>* c3.
-Proof.
-  intros. induction H.
-  - assumption.
-  - eapply step_trans_bal; eauto.
-Qed.
 
 Fixpoint update_locs (S : stack) : var_set :=
   match S with
@@ -299,55 +321,6 @@ Proof.
   exists (update_locs p). reflexivity.
 Qed.
 
-Lemma map_EVar_inj : forall args1 args2,
-      map EVar args1 = map EVar args2 -> args1 = args2.
-Proof.
-  intros.
-  apply map_injective in H; auto.
-  intros. inversion H0. reflexivity.
-Qed.
-
-Ltac solve_determinism_small :=
-  match goal with
-  | [ H1 : CtrlExpr ?e = CtrlExpr ?e2,
-      H2 : whnf ?w |- _ ] =>
-      inversion H1; subst;
-      inversion H2; subst;
-      try (match goal with
-           | [ H1 : matching_arity ?m = Some 0,
-               H2 : matching_arity ?m = Some (S ?n) |- _ ] =>
-               rewrite H1 in H2; discriminate
-           end)
-  end.
-
-Lemma small_step_deterministic : forall e e1 e2,
-  e s=> e1 -> e s=> e2 -> e1 = e2.
-Proof.
-  intros e e1 e2 H1 H2.
-  destruct e as [G ctrl St].
-  inversion H1; inversion H2; subst;
-  (* this generates lots of cases. most of them solvable by congruence*)
-  try congruence;
-  (* others solved by proving that the whnf is impossible *)
-  try solve_determinism_small.
-
-  inversion H10; subst.
-  apply map_EVar_inj in H3; subst.
-  inversion H11; subst.
-  reflexivity.
-Qed.
-
-Lemma step_star_step : forall e1 e2 e3,
-  e1 s=>* e2 ->
-  e2 s=> e3 ->
-  e1 s=>* e3.
-Proof.
-  intros e1 e2 e3 Hstar Hstep.
-  induction Hstar.
-  - eapply step_trans; eauto. constructor.
-  - eapply step_trans; eauto.
-Qed.
-
 Lemma any_stack_extends_empty : forall s,
   extends_stack s [].
 Proof.
@@ -355,124 +328,332 @@ Proof.
   rewrite app_nil_r. reflexivity.
 Qed.
 
-Lemma balanced_implies_star : forall c1 c2 St,
-  c1 s=( St )=>* c2 ->
-  c1 s=>* c2.
+(* Balanced expression evaluation traces *)
+
+Inductive balanced_step_expr : config -> config -> Prop :=
+  (* Empty trace: whnf values are immediately balanced *)
+  | BExprWhnf : forall c G w S,
+      whnf w ->
+      balanced_step_expr
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr w; cfg_stack := S |}
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr w; cfg_stack := S |}
+
+  (* Application: app1 + bal_expr + app2 + bal_expr *)
+  | BExprApp : forall c c1 c2 G e y m D O w St,
+      (* push argument *)
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr (EApp e (EVar y)); cfg_stack := St |} s=>
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := KArg y :: St |} ->
+
+      (* balanced evaluation of e to lambda *)
+      balanced_step_expr
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := KArg y :: St |}
+        {| c := c1; cfg_heap := D; cfg_ctrl := CtrlExpr (ELam m); cfg_stack := KArg y :: St |} ->
+
+      (* apply argument *)
+      {| c := c1; cfg_heap := D; cfg_ctrl := CtrlExpr (ELam m); cfg_stack := KArg y :: St |} s=>
+      {| c := c1; cfg_heap := D; cfg_ctrl := CtrlExpr (ELam (MSupply (EVar y) m)); cfg_stack := St |} ->
+
+      (* balanced evaluation of result *)
+      balanced_step_expr
+        {| c := c1; cfg_heap := D; cfg_ctrl := CtrlExpr (ELam (MSupply (EVar y) m)); cfg_stack := St |}
+        {| c := c2; cfg_heap := O; cfg_ctrl := CtrlExpr w; cfg_stack := St |} ->
+
+      (* overall is balanced *)
+      balanced_step_expr
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr (EApp e (EVar y)); cfg_stack := St |}
+        {| c := c2; cfg_heap := O; cfg_ctrl := CtrlExpr w; cfg_stack := St |}
+
+  (* Variable lookup: var1 + bal_expr + update *)
+  | BExprVar : forall c c1 G y e D w St,
+      heap_lookup G y = Some e ->
+      (* lookup and push update marker *)
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr (EVar y); cfg_stack := St |} s=>
+      {| c := c; cfg_heap := heap_remove G y; cfg_ctrl := CtrlExpr e; cfg_stack := KUpdate y :: St |} ->
+
+      (* balanced evaluation of e *)
+      balanced_step_expr
+        {| c := c; cfg_heap := heap_remove G y; cfg_ctrl := CtrlExpr e; cfg_stack := KUpdate y :: St |}
+        {| c := c1; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := KUpdate y :: St |} ->
+
+      (* update heap *)
+      {| c := c1; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := KUpdate y :: St |} s=>
+      {| c := c1; cfg_heap := heap_update D y w; cfg_ctrl := CtrlExpr w; cfg_stack := St |} ->
+
+      (* overall is balanced *)
+      balanced_step_expr
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr (EVar y); cfg_stack := St |}
+        {| c := c1; cfg_heap := heap_update D y w; cfg_ctrl := CtrlExpr w; cfg_stack := St |}
+
+  (* sat lambda: sat + bal_matching + return *)
+  | BExprSat : forall c c1 c2 G D O m e w St,
+      matching_arity m = Some 0 ->
+      (* witch to matching mode *)
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr (ELam m); cfg_stack := St |} s=>
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch [] m; cfg_stack := KEnd :: St |} ->
+
+      (* balanced matching evaluation *)
+      balanced_step_matching
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch [] m; cfg_stack := KEnd :: St |}
+        {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := KEnd :: St |} ->
+
+      (* return from matching *)
+      {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := KEnd :: St |} s=>
+      {| c := c1; cfg_heap := D; cfg_ctrl := CtrlExpr e; cfg_stack := St |} ->
+
+      (* balanced evaluation of result *)
+      balanced_step_expr
+        {| c := c1; cfg_heap := D; cfg_ctrl := CtrlExpr e; cfg_stack := St |}
+        {| c := c2; cfg_heap := O; cfg_ctrl := CtrlExpr w; cfg_stack := St |} ->
+
+      (* overall is balanced *)
+      balanced_step_expr
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr (ELam m); cfg_stack := St |}
+        {| c := c2; cfg_heap := O; cfg_ctrl := CtrlExpr w; cfg_stack := St |}
+
+(* Balanced matching evaluation traces *)
+with balanced_step_matching : config -> config -> Prop :=
+  (* return with empty args *)
+  | BMatchReturn : forall c G e St,
+      balanced_step_matching
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := St |}
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := St |}
+
+  (* non-empty args, apply *)
+  | BMatchReturnArgs : forall c c' G D A e St,
+      A <> [] ->
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (MReturn e); cfg_stack := St |} s=>
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch [] (MReturn (apply_args A e)); cfg_stack := St |} ->
+
+      balanced_step_matching
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch [] (MReturn (apply_args A e)); cfg_stack := St |}
+        {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch [] (MReturn (apply_args A e)); cfg_stack := St |} ->
+
+      balanced_step_matching
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (MReturn e); cfg_stack := St |}
+        {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch [] (MReturn (apply_args A e)); cfg_stack := St |}
+
+  (* supply: arg + bal_matching *)
+  | BMatchArg : forall c c' G D A y m u St,
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (MSupply (EVar y) m); cfg_stack := St |} s=>
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch (y :: A) m; cfg_stack := St |} ->
+      balanced_step_matching
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch (y :: A) m; cfg_stack := St |}
+        {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch (y :: A) u; cfg_stack := St |} ->
+      balanced_step_matching
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (MSupply (EVar y) m); cfg_stack := St |}
+        {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch (y :: A) u; cfg_stack := St |}
+
+  (* binding: bind + bal_matching *)
+  | BMatchBind : forall c c' G D A x y m u St,
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch (y :: A) (MMatch (PVar x) m); cfg_stack := St |} s=>
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (subst_matching m y x); cfg_stack := St |} ->
+      balanced_step_matching
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (subst_matching m y x); cfg_stack := St |}
+        {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch A u; cfg_stack := St |} ->
+      balanced_step_matching
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch (y :: A) (MMatch (PVar x) m); cfg_stack := St |}
+        {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch A u; cfg_stack := St |}
+
+  (* constructor match success: cons1 + bal_expr + cons2 + bal_matching *)
+  | BMatchConsSuccess : forall c c1 c2 G D O A x cp ps m args u St,
+      (* switch to expr evaluation *)
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch (x :: A) (MMatch (PCons cp ps) m); cfg_stack := St |} s=>
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr (EVar x); cfg_stack := KPat A cp ps m :: St |} ->
+
+      (* balanced evaluation of variable to constructor *)
+      balanced_step_expr
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr (EVar x); cfg_stack := KPat A cp ps m :: St |}
+        {| c := c1; cfg_heap := D; cfg_ctrl := CtrlExpr (ECons cp (map EVar args)); cfg_stack := KPat A cp ps m :: St |} ->
+
+      (* match succeeds *)
+      length ps = length args ->
+      {| c := c1; cfg_heap := D; cfg_ctrl := CtrlExpr (ECons cp (map EVar args)); cfg_stack := KPat A cp ps m :: St |} s=>
+      {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch A (build_nested_matches args ps m); cfg_stack := St |} ->
+
+      (* balanced evaluation of continuation *)
+      balanced_step_matching
+        {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch A (build_nested_matches args ps m); cfg_stack := St |}
+        {| c := c2; cfg_heap := O; cfg_ctrl := CtrlMatch A u; cfg_stack := St |} ->
+
+      (* overall is balanced *)
+      balanced_step_matching
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch (x :: A) (MMatch (PCons cp ps) m); cfg_stack := St |}
+        {| c := c2; cfg_heap := O; cfg_ctrl := CtrlMatch A u; cfg_stack := St |}
+
+  (* constructor match failure: cons1 + bal_expr + fail *)
+  | BMatchConsFail : forall c c1 G D A x cp cp' ps m args St,
+      cp <> cp' ->
+      (* switch to expr evaluation *)
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch (x :: A) (MMatch (PCons cp ps) m); cfg_stack := St |} s=>
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr (EVar x); cfg_stack := KPat A cp ps m :: St |} ->
+
+      (* balanced evaluation of variable to constructor *)
+      balanced_step_expr
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr (EVar x); cfg_stack := KPat A cp ps m :: St |}
+        {| c := c1; cfg_heap := D; cfg_ctrl := CtrlExpr (ECons cp' args); cfg_stack := KPat A cp ps m :: St |} ->
+
+      (* match fails *)
+      {| c := c1; cfg_heap := D; cfg_ctrl := CtrlExpr (ECons cp' args); cfg_stack := KPat A cp ps m :: St |} s=>
+      {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch [] MFail; cfg_stack := St |} ->
+
+      (* overall is balanced *)
+      balanced_step_matching
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch (x :: A) (MMatch (PCons cp ps) m); cfg_stack := St |}
+        {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch [] MFail; cfg_stack := St |}
+
+  (* alt left succeeds: alt1 + bal_matching + return2 *)
+  | BMatchAltLeft : forall c c1 G D A m1 m2 e St,
+      (* push alt *)
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (MAlt m1 m2); cfg_stack := St |} s=>
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A m1; cfg_stack := KAlt A m2 :: St |} ->
+
+      (* balanced evaluation of left branch *)
+      balanced_step_matching
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A m1; cfg_stack := KAlt A m2 :: St |}
+        {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := KAlt A m2 :: St |} ->
+
+      (* discard alt *)
+      {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := KAlt A m2 :: St |} s=>
+      {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := St |} ->
+
+      (* overall is balanced *)
+      balanced_step_matching
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (MAlt m1 m2); cfg_stack := St |}
+        {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := St |}
+
+  (* alt left fails: alt1 + bal_matching + alt2 + balanced *)
+  | BMatchAltRight : forall c c1 c2 G D O A m1 m2 u St,
+      (* push alt *)
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (MAlt m1 m2); cfg_stack := St |} s=>
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A m1; cfg_stack := KAlt A m2 :: St |} ->
+
+      (* balanced evaluation of left branch to failure *)
+      balanced_step_matching
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A m1; cfg_stack := KAlt A m2 :: St |}
+        {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch [] MFail; cfg_stack := KAlt A m2 :: St |} ->
+
+      (* pop and try right branch *)
+      {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch [] MFail; cfg_stack := KAlt A m2 :: St |} s=>
+      {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch A m2; cfg_stack := St |} ->
+
+      (* balanced evaluation of right branch *)
+      balanced_step_matching
+        {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch A m2; cfg_stack := St |}
+        {| c := c2; cfg_heap := O; cfg_ctrl := CtrlMatch A u; cfg_stack := St |} ->
+
+      (* overall is balanced *)
+      balanced_step_matching
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (MAlt m1 m2); cfg_stack := St |}
+        {| c := c2; cfg_heap := O; cfg_ctrl := CtrlMatch A u; cfg_stack := St |}
+
+  (* where: allocate and continue *)
+  | BMatchWhere : forall c G D A m binds u ys renamed_binds renamed_m St,
+      ys = gen_n_fresh c (length binds) ->
+      renamed_binds = rename_bindings binds ys ->
+      renamed_m = rename_matching m ys binds ->
+      (* allocate bindings *)
+      {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (MWhere m binds); cfg_stack := St |} s=>
+      {| c := c + length binds; cfg_heap := allocate_bindings G renamed_binds; cfg_ctrl := CtrlMatch A renamed_m; cfg_stack := St |} ->
+
+      (* balanced evaluation of body *)
+      balanced_step_matching
+        {| c := c + length binds; cfg_heap := allocate_bindings G renamed_binds; cfg_ctrl := CtrlMatch A renamed_m; cfg_stack := St |}
+        {| c := c + length binds; cfg_heap := D; cfg_ctrl := CtrlMatch A u; cfg_stack := St |} ->
+
+      (* overall is balanced *)
+      balanced_step_matching
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (MWhere m binds); cfg_stack := St |}
+        {| c := c + length binds; cfg_heap := D; cfg_ctrl := CtrlMatch A u; cfg_stack := St |}
+.
+
+Lemma balanced_expr_same_stack : forall cfg1 cfg2,
+  balanced_step_expr cfg1 cfg2 ->
+  cfg_stack cfg1 = cfg_stack cfg2.
 Proof.
-  intros. induction H.
-  + constructor.
-  + eapply step_trans; eauto.
+  intros cfg1 cfg2 H.
+  induction H; auto.
 Qed.
 
-Lemma star_to_balanced_empty_end : forall c1 c2,
-  c1 s=>* c2 ->
-  cfg_stack c2 = [] ->
-  c1 s=( [] )=>* c2.
+Lemma balanced_matching_same_stack : forall cfg1 cfg2,
+  balanced_step_matching cfg1 cfg2 ->
+  cfg_stack cfg1 = cfg_stack cfg2.
 Proof.
-  intros c1 c2 Hstar.
-  induction Hstar; intro Hst2.
-  - constructor. apply any_stack_extends_empty.
-  - eapply step_trans_bal.
-    * apply any_stack_extends_empty.
-    * exact H.
-    * apply IHHstar. exact Hst2.
+  intros cfg1 cfg2 H.
+  induction H; auto.
 Qed.
 
-Lemma step_star_balanced_empty_to_empty : forall c1 c2,
-  cfg_stack c1 = [] ->
-  cfg_stack c2 = [] ->
-  c1 s=>* c2 <-> c1 s=( [] )=>* c2.
+(* Balanced evaluations correspond to step_star *)
+Lemma balanced_expr_to_steps : forall cfg1 cfg2,
+  balanced_step_expr cfg1 cfg2 ->
+  cfg1 s=>* cfg2
+with balanced_matching_to_steps : forall cfg1 cfg2,
+  balanced_step_matching cfg1 cfg2 ->
+  cfg1 s=>* cfg2.
 Proof.
-  intros. split; intros.
-  - apply star_to_balanced_empty_end; assumption.
-  - eapply balanced_implies_star. exact H1.
+  - intros cfg1 cfg2 H.
+    induction H.
+    + constructor.
+    + (* BExprApp *)
+      eapply step_star_trans. eapply step_star_one. eauto.
+      eapply step_star_trans. eauto.
+      eapply step_star_trans. eapply step_star_one. eauto.
+      eauto.
+
+    + (* BExprVar *)
+      eapply step_star_trans. eapply step_star_one. eauto.
+      eapply step_star_trans. eauto.
+      eapply step_star_one. eauto.
+
+    + (* BExprSat *)
+      eapply step_star_trans. eapply step_star_one. eauto.
+      eapply step_star_trans. eauto.
+      eapply step_star_trans. eapply step_star_one. eauto.
+      eauto.
+
+  - intros cfg1 cfg2 H.
+    induction H; try constructor.
+    + (* BMatchReturnArgs *)
+      eapply step_star_trans. eapply step_star_one. eauto. eauto.
+
+    + (* BMatchArg *)
+      eapply step_star_trans. eapply step_star_one. eauto. eauto.
+
+    + (* BMatchBind *)
+      eapply step_star_trans. eapply step_star_one. eauto. eauto.
+
+    + (* BMatchConsSuccess *)
+      eapply step_star_trans. eapply step_star_one. eauto.
+      eapply step_star_trans. apply balanced_expr_to_steps. eauto.
+      eapply step_star_trans. eapply step_star_one. eauto.
+      eauto.
+
+    + (* BMatchConsFail *)
+      eapply step_star_trans. eapply step_star_one. eauto.
+      eapply step_star_trans. apply balanced_expr_to_steps. eauto.
+      eapply step_star_one. eauto.
+
+    + (* BMatchAltLeft *)
+      eapply step_star_trans. eapply step_star_one. eauto.
+      eapply step_star_trans. eauto.
+      eapply step_star_one. eauto.
+
+    + (* BMatchAltRight *)
+      eapply step_star_trans. eapply step_star_one. eauto.
+      eapply step_star_trans. eauto.
+      eapply step_star_trans. eapply step_star_one. eauto.
+      eauto.
+
+    + (* BMatchWhere *)
+      eapply step_star_trans. eapply step_star_one. eauto.
+      eauto.
 Qed.
 
-Lemma step_star_bal_inv_whnf : forall c G w St S,
-  whnf w ->
-  extends_stack St S ->
-  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr w; cfg_stack := St |} s=( S )=>*
-  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr w; cfg_stack := St |}.
-Proof. intros. constructor. assumption. Qed.
-
-Lemma step_star_bal_extends_stack : forall c1 c2 St,
-  c1 s=( St )=>* c2 ->
-  extends_stack (cfg_stack c1) St /\
-  extends_stack (cfg_stack c2) St.
-Proof.
-  intros c1 c2 St H.
-  induction H.
-  - split; assumption.
-  - destruct IHstep_star_bal.
-    split; assumption.
-Qed.
-
-Lemma cons_self_contra {A} (x : A) (xs : list A) :
-  x :: xs <> xs.
-Proof.
-  induction xs as [| y ys IH].
-  - discriminate.
-  - simpl. intro H. injection H as H1 H2. subst.
-    apply IH. assumption.
-Qed.
-
-(* when we step through KUpdate, the heap gets updated and stack shrinks *)
-Lemma step_bal_through_KUpdate : forall c G w y St c' D w',
-  whnf w ->
-  extends_stack (KUpdate y :: St) St ->
-
-  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr w; cfg_stack := KUpdate y :: St |} s=( St )=>*
-  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w'; cfg_stack := St |} ->
-
-  {| c := c; cfg_heap := heap_update G y w; cfg_ctrl := CtrlExpr w; cfg_stack := St |} s=( St )=>*
-  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w'; cfg_stack := St |}.
-Proof.
-  intros c G w y St c' D w' Hwhnf Hext Hseq.
-  inversion Hseq as [| c1 c2 c3 St' Hext1 Hstep Hseq2]; subst.
-  - apply cons_self_contra in H4. contradiction.
-  - inversion Hstep; subst; try solve [inversion Hwhnf]; try congruence.
-    inversion Hwhnf.
-    rewrite H4 in H0. discriminate.
-Qed.
-
-Lemma step_star_bal_ind2 :
-  forall (P : config -> config -> stack -> Prop),
-  (* Base case: reflexive steps *)
-  (forall c St, extends_stack (cfg_stack c) St -> P c c St) ->
-  (* Inductive case: one step followed by balanced sequence *)
-  (forall c1 c2 c3 St,
-      extends_stack (cfg_stack c1) St ->
-      c1 s=> c2 ->
-      c2 s=( St )=>* c3 ->
-      P c2 c3 St ->
-      P c1 c3 St) ->
-  forall c1 c2 St, c1 s=( St )=>* c2 -> P c1 c2 St.
-Proof.
-  intros P base step.
-  fix IH 4. intros c1 c2 St Hbal.
-  inversion Hbal; subst.
-  - apply base. assumption.
-  - eapply step; eauto.
-Qed.
-
-Print step_star_bal_ind.
-Print step_star_bal_ind2.
-
-Lemma balanced_decomposes_update : forall c G e x St_init St_outer c' D w St_final,
-  extends_stack (KUpdate x :: St_init) St_outer ->
-  extends_stack St_final St_outer ->
-  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := KUpdate x :: St_init |} 
-    s=( St_outer )=>*
-  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St_final |} ->
-  whnf w ->
-  (* The KUpdate must be popped, so St_final has fewer updates than KUpdate x :: St_init *)
-  (exists L_prefix', update_locs (KUpdate x :: St_init) = L_prefix' ++ update_locs St_final) ->
-  (* Then there exists an intermediate heap G' where we reach whnf before the update *)
-  exists G' c1,
-    {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := KUpdate x :: St_init |} 
-      s=( St_outer )=>*
-    {| c := c1; cfg_heap := G'; cfg_ctrl := CtrlExpr w; cfg_stack := KUpdate x :: St_init |} /\
-    D = heap_update G' x w /\
-    c' = c1.
-Proof.
+(* probably false, only true when stack = [] *)
+Lemma steps_to_balanced_expr : forall cfg1 cfg2,
+  cfg1 s=>* cfg2 ->
+  balanced_step_expr cfg1 cfg2
+with steps_to_balanced_matching : forall cfg1 cfg2,
+  cfg1 s=>* cfg2 ->
+  balanced_step_matching cfg1 cfg2.
 Admitted.
+
