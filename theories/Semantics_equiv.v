@@ -54,7 +54,7 @@ Proof.
 
   - intros c c1 G L y e D w Hheap Hin Heval IHexpr St.
     eapply step_star_trans.
-    + eapply step_trans.
++ eapply step_trans.
       * apply StepVar. eassumption.
       * apply step_refl.
     + eapply step_star_trans.
@@ -200,8 +200,6 @@ Proof.
 
       simpl in Heval. rewrite <- update_locs_KUpdate in Heval.
       eapply EvalVar; eauto.
-      (* missing blakholing invariant *)
-      admit.
 
     + (* BExprSat *)
       assert (Hmatch : eval_matching c G (update_locs (KEnd :: St)) [] m D0 (MRReturn e0) c1). { 
@@ -222,14 +220,29 @@ Proof.
     + (* MReturn *)
       inversion Hbal; subst; try discriminate; try list_contradiction.
       * constructor.
-      * assert (Heval : eval_matching c G (update_locs (KAlt [] m2 :: St)) [] m1 D (MRReturn e) c').
+      * (* BMatchAltLeft *)
+        assert (Heval : eval_matching c G (update_locs (KAlt [] m2 :: St)) [] m1 D (MRReturn e) c').
         { apply (balanced_step_to_bigstep_matching c G [] m1 D (MReturn e) (KAlt [] m2 :: St) c'); auto. }
 
         simpl in Heval.
         eapply EvalAltLeft. exact Heval.
-      * admit. (* provable *)
+      * (* BMatchAltRight success *)
+        assert (Hm1_fail: A = [] /\ eval_matching c G (update_locs (KAlt A m2 :: St)) A m1 D0 MRFail c1).
+        {
+          apply balanced_step_to_bigstep_matching with (u := MFail); auto.
+          - assert (A = []). { admit. } subst. assumption.
+          - constructor.
+        }
+        destruct Hm1_fail as [HA_empty Hm1_eval].
 
-      * set (renamed_binds := rename_bindings binds (gen_n_fresh c (Datatypes.length binds))).
+        assert (Hreturn2: eval_matching c1 D0 (update_locs St) A m2 D (MRReturn e) c').
+        {
+          apply balanced_step_to_bigstep_matching with (u := MReturn e); auto.
+        }
+        eapply EvalAltRight; eauto.
+
+      * (* BMatchWhere *)
+        set (renamed_binds := rename_bindings binds (gen_n_fresh c (Datatypes.length binds))).
         set (renamed_m := rename_matching m0 (gen_n_fresh c (Datatypes.length binds)) binds).
         assert (Heval :
           eval_matching (c + length binds) (allocate_bindings G renamed_binds) (update_locs St) A renamed_m
@@ -243,49 +256,41 @@ Proof.
 
     + (* MFail *)
       inversion Hbal; subst; try discriminate; try list_contradiction.
-      * admit.
-      * admit.
+      * (* BMatchConsFail *)
+        assert (HFail2 : A = [] /\ eval_matching c1 D0 (update_locs St) A m2 D MRFail c').
+        {
+          apply (balanced_step_to_bigstep_matching c1 D0 A m2 D MFail St c'); auto.
+        }
+        destruct HFail2 as [HA HEval2].
+        split; auto.
+        subst A.
+        assert (HFail1 : eval_matching c G (update_locs (KAlt [] m2 :: St)) [] m1 D0 MRFail c1).
+        {
+          rewrite update_locs_KAlt.
+          apply (balanced_step_to_bigstep_matching c G [] m1 D0 MFail (KAlt [] m2 :: St) c1); auto.
+        }
+
+        simpl in HFail1.
+        eapply EvalAltRight; eauto.
+
+      * (* BMatchAltRight fail *)
+        assert (HFail : A = [] /\ eval_matching (c + Datatypes.length binds)
+                                    (allocate_bindings G
+                                    (rename_bindings binds (gen_n_fresh c (Datatypes.length binds))))
+                                    (update_locs St) A
+                                    (rename_matching m0 (gen_n_fresh c (Datatypes.length binds)) binds)
+                                    D MRFail (c + Datatypes.length binds)).
+        {
+          apply (balanced_step_to_bigstep_matching 
+                   (c + Datatypes.length binds)
+                   (allocate_bindings G (rename_bindings binds (gen_n_fresh c (Datatypes.length binds))))
+                   A
+                   (rename_matching m0 (gen_n_fresh c (Datatypes.length binds)) binds)
+                   D MFail St (c + Datatypes.length binds));
+          auto.
+        }
+        destruct HFail as [HA HEval].
+        split; auto.
+        eapply EvalWhere with (ys := gen_n_fresh c (Datatypes.length binds)); eauto.
 Admitted.
 
-(* if we could prove this *)
-Lemma steps_to_balanced_expr : forall cfg1 cfg2,
-  cfg_stack cfg1 = [] ->
-  cfg_stack cfg2 = [] ->
-  cfg1 s=>* cfg2 ->
-  balanced_step_expr cfg1 cfg2
-with steps_to_balanced_matching : forall cfg1 cfg2,
-  cfg_stack cfg1 = [] ->
-  cfg_stack cfg2 = [] ->
-  cfg1 s=>* cfg2 ->
-  balanced_step_matching cfg1 cfg2.
-Proof. Admitted.
-
-Theorem small_step_impl_bigstep_expr : forall e D w c',
-  initial_config e s=>* {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := [] |} ->
-  whnf w ->
-  eval_expr 0 empty_heap (update_locs []) e D w c'
-
-with small_step_impl_bigstep_matching : forall A m D u c',
-  {| c := 0; cfg_heap := empty_heap; cfg_ctrl := CtrlMatch A m; cfg_stack := [] |} s=>* 
-  {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch A u; cfg_stack := [] |} ->
-  matching_final u ->
-  match u with
-  | MReturn e => eval_matching 0 empty_heap (update_locs []) A m D (MRReturn e) c'
-  | MFail => A = [] /\ eval_matching 0 empty_heap (update_locs []) A m D MRFail c'
-  | _ => False
-  end.
-Proof.
-  - intros e D w c' Hsteps Hwhnf.
-    apply balanced_step_to_bigstep_expr.
-    + unfold initial_config in Hsteps. apply steps_to_balanced_expr in Hsteps. assumption.
-      * reflexivity.
-      * reflexivity.
-    + assumption.
-
-  - intros A m D u c' Hsteps Hu.
-    apply balanced_step_to_bigstep_matching.
-    + unfold initial_config in Hsteps. apply steps_to_balanced_matching in Hsteps. assumption.
-      * reflexivity.
-      * reflexivity.
-    + assumption.
-Qed.

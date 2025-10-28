@@ -366,6 +366,7 @@ Inductive balanced_step_expr : config -> config -> Prop :=
   (* Variable lookup: var1 + bal_expr + update *)
   | BExprVar : forall c c1 G y e D w St,
       heap_lookup G y = Some e ->
+      ~ (In y (update_locs St)) ->
       (* lookup and push update marker *)
       {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr (EVar y); cfg_stack := St |} s=>
       {| c := c; cfg_heap := heap_remove G y; cfg_ctrl := CtrlExpr e; cfg_stack := KUpdate y :: St |} ->
