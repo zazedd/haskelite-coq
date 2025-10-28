@@ -159,21 +159,6 @@ Proof.
       * apply IHmatch.
 Qed.
 
-Lemma cons_self_contra {A} (x : A) (xs : list A) :
-  x :: xs <> xs.
-Proof.
-  induction xs as [| y ys IH].
-  - discriminate.
-  - intros H. injection H as H1 H2. subst. auto.
-Qed.
-
-Ltac list_contradiction :=
-  match goal with
-  | H : ?L <> ?L |- _ => contradiction
-  | H : _ :: ?L = ?L |- _ => apply cons_self_contra in H; contradiction
-  | H : ?L = _ :: ?L |- _ => symmetry in H; apply cons_self_contra in H; contradiction
-  end.
-
 Lemma balanced_step_to_bigstep_expr : forall c G e D w St c',
   balanced_step_expr
     {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |}
@@ -199,7 +184,8 @@ Proof.
       assert (Heval1 : eval_expr c G (update_locs (KArg y :: St)) e0 D0 (ELam m) c1). {
         apply balanced_step_to_bigstep_expr with (St := KArg y :: St) (c' := c1).
         - auto.
-        - admit.
+        - inversion H8; subst.
+          apply whnf_lambda with n. assumption.
       }
 
       assert (Heval2 : eval_expr c1 D0 (update_locs St) (ELam (MSupply (EVar y) m)) D w c').
@@ -241,12 +227,12 @@ Proof.
 
         simpl in Heval.
         eapply EvalAltLeft. exact Heval.
-      * admit.
+      * admit. (* provable *)
 
       * set (renamed_binds := rename_bindings binds (gen_n_fresh c (Datatypes.length binds))).
         set (renamed_m := rename_matching m0 (gen_n_fresh c (Datatypes.length binds)) binds).
         assert (Heval :
-          eval_matching (c + length binds) (allocate_bindings G renamed_binds) (update_locs St) A renamed_m 
+          eval_matching (c + length binds) (allocate_bindings G renamed_binds) (update_locs St) A renamed_m
           D (MRReturn e) (c + length binds)).
         {
           apply (balanced_step_to_bigstep_matching (c + length binds) (allocate_bindings G renamed_binds) A renamed_m
@@ -261,6 +247,18 @@ Proof.
       * admit.
 Admitted.
 
+(* if we could prove this *)
+Lemma steps_to_balanced_expr : forall cfg1 cfg2,
+  cfg_stack cfg1 = [] ->
+  cfg_stack cfg2 = [] ->
+  cfg1 s=>* cfg2 ->
+  balanced_step_expr cfg1 cfg2
+with steps_to_balanced_matching : forall cfg1 cfg2,
+  cfg_stack cfg1 = [] ->
+  cfg_stack cfg2 = [] ->
+  cfg1 s=>* cfg2 ->
+  balanced_step_matching cfg1 cfg2.
+Proof. Admitted.
 
 Theorem small_step_impl_bigstep_expr : forall e D w c',
   initial_config e s=>* {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := [] |} ->
@@ -280,13 +278,14 @@ Proof.
   - intros e D w c' Hsteps Hwhnf.
     apply balanced_step_to_bigstep_expr.
     + unfold initial_config in Hsteps. apply steps_to_balanced_expr in Hsteps. assumption.
+      * reflexivity.
+      * reflexivity.
     + assumption.
 
   - intros A m D u c' Hsteps Hu.
     apply balanced_step_to_bigstep_matching.
     + unfold initial_config in Hsteps. apply steps_to_balanced_matching in Hsteps. assumption.
+      * reflexivity.
+      * reflexivity.
     + assumption.
 Qed.
-
-
-

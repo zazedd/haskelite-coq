@@ -132,6 +132,21 @@ Proof.
       * apply IHl1; assumption.
 Qed.
 
+Lemma cons_self_contra {A} (x : A) (xs : list A) :
+  x :: xs <> xs.
+Proof.
+  induction xs as [| y ys IH].
+  - discriminate.
+  - intros H. injection H as H1 H2. subst. auto.
+Qed.
+
+Ltac list_contradiction :=
+  match goal with
+  | H : ?L <> ?L |- _ => contradiction
+  | H : _ :: ?L = ?L |- _ => apply cons_self_contra in H; contradiction
+  | H : ?L = _ :: ?L |- _ => symmetry in H; apply cons_self_contra in H; contradiction
+  end.
+
 Lemma self_nil : forall (A : Type) (x0 St : list A),
 St = x0 ++ St -> x0 = [].
 Proof.

@@ -648,12 +648,59 @@ Proof.
       eauto.
 Qed.
 
-(* probably false, only true when stack = [] *)
-Lemma steps_to_balanced_expr : forall cfg1 cfg2,
-  cfg1 s=>* cfg2 ->
-  balanced_step_expr cfg1 cfg2
-with steps_to_balanced_matching : forall cfg1 cfg2,
-  cfg1 s=>* cfg2 ->
-  balanced_step_matching cfg1 cfg2.
-Admitted.
+Lemma step_removes_KArg : forall cfg cfg',
+  cfg s=> cfg' ->
+  exists y St, cfg_stack cfg = KArg y :: St ->
+  (cfg_stack cfg' = St \/
+   exists y', cfg_stack cfg' = KArg y' :: St).
+Proof.
+  intros cfg cfg' Hstep.
+  inversion Hstep; subst; simpl;
+  try (exists y, St; intros H2; list_contradiction);
+  try (exists "impossible"%string, St; intros H2; list_contradiction);
+  try (exists "impossible"%string, St; intros H2; inversion H2).
+  left. reflexivity.
+Qed.
 
+Lemma step_preserves_removes_or_adds_some_top : forall c1 c2 k St,
+  cfg_stack c1 = k :: St ->
+  c1 s=> c2 ->
+
+  cfg_stack c2 = k :: St \/
+  cfg_stack c2 = St \/
+  (exists y, cfg_stack c2 = KArg y :: k :: St) \/
+  (cfg_stack c2 = KEnd :: k :: St) \/
+  (exists y, cfg_stack c2 = KUpdate y :: k :: St) \/
+  (exists A con ps m, cfg_stack c2 = KPat A con ps m :: k :: St) \/
+  (exists A m, cfg_stack c2 = KAlt A m :: k :: St).
+Proof.
+  intros c1 c2 k St Hstack Hstep.
+  destruct c1 as [c1' G1 ctrl1 S1].
+  simpl in Hstack. subst S1.
+
+  inversion Hstep; subst; simpl in *; try discriminate;
+  try (left; reflexivity); try (right; reflexivity);
+  try (right; left; reflexivity).
+  - right. right. left. exists y. reflexivity.
+  - right. right. right. left. reflexivity.
+  - right. right. right. right. left. exists y. reflexivity.
+  - right. right. right. right. right. left. exists A, con, ps, m. reflexivity.
+  - repeat right. exists A, m2. reflexivity.
+Qed.
+
+Lemma step_from_empty_stack : forall c G e c' G' ctrl' S',
+  {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := [] |} s=>
+  {| c := c'; cfg_heap := G'; cfg_ctrl := ctrl'; cfg_stack := S' |} ->
+  (S' = [] /\ exists w, ctrl' = CtrlExpr w /\ whnf w) \/
+  (exists y e', e = EApp e' (EVar y) /\ S' = [KArg y] /\ ctrl' = CtrlExpr e') \/
+  (exists y e', heap_lookup G y = Some e' /\ e = EVar y /\ 
+                S' = [KUpdate y] /\ ctrl' = CtrlExpr e') \/
+  (exists m, e = ELam m /\ matching_arity m = Some 0 /\ 
+             S' = [KEnd] /\ ctrl' = CtrlMatch [] m).
+Proof.
+  intros c G e c' G' ctrl' S' Hstep.
+  inversion Hstep; subst; simpl in *; try discriminate.
+  - right. left. exists y, e0. auto.
+  - right. right. right. exists m. auto.
+  - right. right. left. exists y, e0. auto.
+Qed.
