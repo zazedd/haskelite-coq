@@ -419,6 +419,12 @@ with balanced_step_matching : config -> config -> Prop :=
         {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := St |}
         {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := St |}
 
+  (* return with fail *)
+  | BMatchFail : forall c G St,
+      balanced_step_matching
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch [] MFail; cfg_stack := St |}
+        {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch [] MFail; cfg_stack := St |}
+
   (* non-empty args, apply *)
   | BMatchReturnArgs : forall c c' G D A e St,
       A <> [] ->
@@ -434,29 +440,29 @@ with balanced_step_matching : config -> config -> Prop :=
         {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch [] (MReturn (apply_args A e)); cfg_stack := St |}
 
   (* supply: arg + bal_matching *)
-  | BMatchArg : forall c c' G D A y m u St,
+  | BMatchArg : forall c c' G D A A' y m u St,
       {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (MSupply (EVar y) m); cfg_stack := St |} s=>
       {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch (y :: A) m; cfg_stack := St |} ->
       balanced_step_matching
         {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch (y :: A) m; cfg_stack := St |}
-        {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch (y :: A) u; cfg_stack := St |} ->
+        {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch A' u; cfg_stack := St |} ->
       balanced_step_matching
         {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (MSupply (EVar y) m); cfg_stack := St |}
-        {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch (y :: A) u; cfg_stack := St |}
+        {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch A' u; cfg_stack := St |}
 
   (* binding: bind + bal_matching *)
-  | BMatchBind : forall c c' G D A x y m u St,
+  | BMatchBind : forall c c' G D A A' x y m u St,
       {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch (y :: A) (MMatch (PVar x) m); cfg_stack := St |} s=>
       {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (subst_matching m y x); cfg_stack := St |} ->
       balanced_step_matching
         {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (subst_matching m y x); cfg_stack := St |}
-        {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch A u; cfg_stack := St |} ->
+        {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch A' u; cfg_stack := St |} ->
       balanced_step_matching
         {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch (y :: A) (MMatch (PVar x) m); cfg_stack := St |}
-        {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch A u; cfg_stack := St |}
+        {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch A' u; cfg_stack := St |}
 
   (* constructor match success: cons1 + bal_expr + cons2 + bal_matching *)
-  | BMatchConsSuccess : forall c c1 c2 G D O A x cp ps m args u St,
+  | BMatchConsSuccess : forall c c1 c2 G D O A A' x cp ps m args u St,
       (* switch to expr evaluation *)
       {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch (x :: A) (MMatch (PCons cp ps) m); cfg_stack := St |} s=>
       {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr (EVar x); cfg_stack := KPat A cp ps m :: St |} ->
@@ -474,12 +480,12 @@ with balanced_step_matching : config -> config -> Prop :=
       (* balanced evaluation of continuation *)
       balanced_step_matching
         {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch A (build_nested_matches args ps m); cfg_stack := St |}
-        {| c := c2; cfg_heap := O; cfg_ctrl := CtrlMatch A u; cfg_stack := St |} ->
+        {| c := c2; cfg_heap := O; cfg_ctrl := CtrlMatch A' u; cfg_stack := St |} ->
 
       (* overall is balanced *)
       balanced_step_matching
         {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch (x :: A) (MMatch (PCons cp ps) m); cfg_stack := St |}
-        {| c := c2; cfg_heap := O; cfg_ctrl := CtrlMatch A u; cfg_stack := St |}
+        {| c := c2; cfg_heap := O; cfg_ctrl := CtrlMatch A' u; cfg_stack := St |}
 
   (* constructor match failure: cons1 + bal_expr + fail *)
   | BMatchConsFail : forall c c1 G D A x cp cp' ps m args St,
@@ -523,7 +529,7 @@ with balanced_step_matching : config -> config -> Prop :=
         {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := St |}
 
   (* alt left fails: alt1 + bal_matching + alt2 + balanced *)
-  | BMatchAltRight : forall c c1 c2 G D O A m1 m2 u St,
+  | BMatchAltRight : forall c c1 c2 G D O A A' m1 m2 u St,
       (* push alt *)
       {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (MAlt m1 m2); cfg_stack := St |} s=>
       {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A m1; cfg_stack := KAlt A m2 :: St |} ->
@@ -540,15 +546,15 @@ with balanced_step_matching : config -> config -> Prop :=
       (* balanced evaluation of right branch *)
       balanced_step_matching
         {| c := c1; cfg_heap := D; cfg_ctrl := CtrlMatch A m2; cfg_stack := St |}
-        {| c := c2; cfg_heap := O; cfg_ctrl := CtrlMatch A u; cfg_stack := St |} ->
+        {| c := c2; cfg_heap := O; cfg_ctrl := CtrlMatch A' u; cfg_stack := St |} ->
 
       (* overall is balanced *)
       balanced_step_matching
         {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (MAlt m1 m2); cfg_stack := St |}
-        {| c := c2; cfg_heap := O; cfg_ctrl := CtrlMatch A u; cfg_stack := St |}
+        {| c := c2; cfg_heap := O; cfg_ctrl := CtrlMatch A' u; cfg_stack := St |}
 
   (* where: allocate and continue *)
-  | BMatchWhere : forall c G D A m binds u ys renamed_binds renamed_m St,
+  | BMatchWhere : forall c G D A A' m binds u ys renamed_binds renamed_m St,
       ys = gen_n_fresh c (length binds) ->
       renamed_binds = rename_bindings binds ys ->
       renamed_m = rename_matching m ys binds ->
@@ -559,12 +565,12 @@ with balanced_step_matching : config -> config -> Prop :=
       (* balanced evaluation of body *)
       balanced_step_matching
         {| c := c + length binds; cfg_heap := allocate_bindings G renamed_binds; cfg_ctrl := CtrlMatch A renamed_m; cfg_stack := St |}
-        {| c := c + length binds; cfg_heap := D; cfg_ctrl := CtrlMatch A u; cfg_stack := St |} ->
+        {| c := c + length binds; cfg_heap := D; cfg_ctrl := CtrlMatch A' u; cfg_stack := St |} ->
 
       (* overall is balanced *)
       balanced_step_matching
         {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A (MWhere m binds); cfg_stack := St |}
-        {| c := c + length binds; cfg_heap := D; cfg_ctrl := CtrlMatch A u; cfg_stack := St |}
+        {| c := c + length binds; cfg_heap := D; cfg_ctrl := CtrlMatch A' u; cfg_stack := St |}
 .
 
 Lemma balanced_expr_same_stack : forall cfg1 cfg2,
@@ -705,3 +711,4 @@ Proof.
   - right. right. right. exists m. auto.
   - right. right. left. exists y, e0. auto.
 Qed.
+

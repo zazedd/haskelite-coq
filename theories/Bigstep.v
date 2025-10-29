@@ -30,6 +30,8 @@ Inductive eval_expr : nat -> heap -> var_set -> expr ->
 
 with eval_matching : nat -> heap -> var_set -> list var -> matching -> 
                      heap -> matching_result -> nat -> Prop :=
+
+  (*eval_matching c G (update_locs St) A (MReturn e0) D (MRReturn (apply_args A e0)) c'*)
   | EvalReturn : forall c G L A e,
       eval_matching c G L A (MReturn e) G (MRReturn (apply_args A e)) c
 
