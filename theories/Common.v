@@ -71,37 +71,6 @@ Definition rename_matching (m : matching) (ys : list var) (binds : list (var * e
 Definition allocate_bindings (G : heap) (b : list (var * expr)) : heap :=
   fold_left (fun acc (s : (var * expr)) => let (k, e) := s in heap_update acc k e) b G.
 
-Open Scope string_scope.
-Fixpoint string_of_nat_aux (time n : nat) (acc : string) : string :=
-  let d := match n mod 10 with
-           | 0 => "0" | 1 => "1" | 2 => "2" | 3 => "3" | 4 => "4" | 5 => "5"
-           | 6 => "6" | 7 => "7" | 8 => "8" | _ => "9"
-           end in
-  let acc' := d ++ acc in
-  match time with
-    | 0 => acc'
-    | S time' =>
-      match n / 10 with
-        | 0 => acc'
-        | n' => string_of_nat_aux time' n' acc'
-      end
-  end.
-
-Definition string_of_nat (n : nat) : string :=
-  string_of_nat_aux n n "".
-
-Fixpoint generate_fresh_vars (base : var) (n : nat) (avoid : list var) : list var :=
-  match n with
-  | O => []
-  | S n' => 
-      let candidate := base ++ "_" ++ string_of_nat (length avoid + n') in
-      if in_dec string_dec candidate avoid then
-        generate_fresh_vars base n' avoid
-      else
-        candidate :: generate_fresh_vars base n' (candidate :: avoid)
-  end.
-Close Scope string_scope.
-
 (* build y1 |> p1 => ... =>  yn |> pn =>  m *)
 Fixpoint build_nested_matches (vars : list var) (pats : list pattern) (m : matching) : matching :=
   match vars, pats with
@@ -130,29 +99,4 @@ Proof.
       f_equal.
       * apply Hinj. assumption.
       * apply IHl1; assumption.
-Qed.
-
-Lemma cons_self_contra {A} (x : A) (xs : list A) :
-  x :: xs <> xs.
-Proof.
-  induction xs as [| y ys IH].
-  - discriminate.
-  - intros H. injection H as H1 H2. subst. auto.
-Qed.
-
-Ltac list_contradiction :=
-  match goal with
-  | H : ?L <> ?L |- _ => contradiction
-  | H : _ :: ?L = ?L |- _ => apply cons_self_contra in H; contradiction
-  | H : ?L = _ :: ?L |- _ => symmetry in H; apply cons_self_contra in H; contradiction
-  end.
-
-Lemma self_nil : forall (A : Type) (x0 St : list A),
-St = x0 ++ St -> x0 = [].
-Proof.
-  intros A x0 St H.
-  symmetry in H.
-  rewrite <- (app_nil_l St) in H.
-  apply app_inv_tail in H.
-  exact H.
 Qed.

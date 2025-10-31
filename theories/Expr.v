@@ -106,47 +106,6 @@ Proof.
   intros. apply whnf_lambda with n. assumption.
 Qed.
 
-Lemma cons_whnf : forall c args,
-  whnf (ECons c args).
-Proof.
-  constructor.
-Qed.
-
-Lemma not_whnf_var : forall x, ~whnf (EVar x).
-Proof.
-  intros x H. inversion H.
-Qed.
-
-Lemma not_whnf_app : forall f e, ~whnf (EApp f e).
-Proof.
-  intros f e H. inversion H.
-Qed.
-
-(** Structural properties *)
-Lemma supply_reduces_arity : forall e m n,
-  matching_arity m = Some (S n) ->
-  matching_arity (MSupply e m) = Some n.
-Proof.
-  intros.
-  simpl. rewrite H.
-  reflexivity.
-Qed.
-
-Lemma supply_preserves_zero_arity : forall e m,
-  matching_arity m = Some 0 ->
-  matching_arity (MSupply e m) = Some 0.
-Proof.
-  intros.
-  simpl. rewrite H.
-  reflexivity.
-Qed.
-
-Lemma return_arity_zero : forall e, matching_arity (MReturn e) = Some 0.
-Proof. reflexivity. Qed.
-
-Lemma fail_arity_zero : matching_arity MFail = Some 0.
-Proof. reflexivity. Qed.
-
 (* fresh variable generator context *)
 (* the counter is threaded through evaluation *)
 Parameter gensym : nat -> var.
@@ -168,22 +127,6 @@ Proof.
 Qed.
 
 Require Import Lia.
-
-Lemma gen_n_fresh_NoDup : forall c n,
-  NoDup (gen_n_fresh c n).
-Proof.
-  intros c n. revert c.
-  induction n; intros c; simpl.
-  - constructor.
-  - constructor.
-    + intros Hin.
-      induction n; simpl in Hin.
-      * inversion Hin.
-      * destruct Hin as [Heq | Hin'].
-        -- apply gensym_injective in Heq. lia.
-        -- admit.
-    + apply IHn.
-Admitted.
 
 Lemma gen_n_fresh_In : forall c n k,
   In (gensym k) (gen_n_fresh c n) <-> c <= k < c + n.

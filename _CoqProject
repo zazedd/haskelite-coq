@@ -5,4 +5,4 @@ theories/Bigstep.v
 theories/Smallstep.v
 theories/Big_impl_small.v
 theories/Small_impl_big.v
-theories/Semantics_equiv.v
+theories/Equivalence.v

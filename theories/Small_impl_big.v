@@ -26,7 +26,8 @@ with balanced_step_to_bigstep_matching_gen : forall c G A m D A' u St c',
   | MReturn e => eval_matching c G (update_locs St) A m D (MRReturn e) c'
   | MFail => A' = [] /\ eval_matching c G (update_locs St) A m D MRFail c'
   | _ => False
-  end.
+  end
+.
 Proof.
   - intros c G e D w St c' Hbal Hwhnf.
     inversion Hbal; subst.
@@ -53,9 +54,9 @@ Proof.
       eapply EvalVar; eauto.
 
     + (* BExprSat *)
-      assert (Hmatch : eval_matching c G (update_locs (KEnd :: St)) [] m D0 (MRReturn e0) c1). { 
+      assert (Hmatch : eval_matching c G (update_locs (KEnd :: St)) [] m D0 (MRReturn e0) c1). {
         assert (Hmatch' := balanced_step_to_bigstep_matching_gen c G [] m D0 [] (MReturn e0) (KEnd :: St) c1 H8).
-        simpl in Hmatch'. apply Hmatch'. apply MFinal_Return. 
+        simpl in Hmatch'. apply Hmatch'. apply MFinal_Return.
       }
 
       assert (Heval : eval_expr c1 D0 (update_locs St) e0 D w c'). {
@@ -74,7 +75,7 @@ Proof.
       * (* BMatchReturnArgs *)
         inversion H10; subst.
         -- apply EvalReturn.
-        -- exfalso. list_contradiction.
+        -- contradiction.
 
       * (* BMatchArg *)
         assert (Heval : eval_matching c G (update_locs St) (y :: A) m0 D (MRReturn e) c').
@@ -199,4 +200,3 @@ Proof.
         split; auto.
         eapply EvalWhere with (ys := gen_n_fresh c (Datatypes.length binds)); eauto.
 Qed.
-
