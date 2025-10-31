@@ -83,24 +83,6 @@ with eval_matching_ind_mutual := Induction for eval_matching Sort Prop.
 
 Combined Scheme eval_ind from eval_expr_ind_mutual, eval_matching_ind_mutual.
 
-  
-
-Lemma whnf_self_eval : forall c G L e,
-  whnf e -> eval_expr c G L e G e c.
-Proof.
-  intros. constructor. assumption.
-Qed.
-
-Lemma matching_arity_preserved_subst : forall m x y,
-  matching_arity (subst_matching m y x) = matching_arity m.
-Proof.
-  intros.
-  induction m; simpl; auto.
-  + rewrite IHm. trivial.
-  + rewrite IHm. trivial.
-  + rewrite IHm1, IHm2. trivial.
-Qed.
-
 Lemma eval_expr_produces_whnf : forall c G L e D w c',
   eval_expr c G L e D w c' -> whnf w.
 Proof.

@@ -26,7 +26,8 @@ with balanced_step_to_bigstep_matching_gen : forall c G A m D A' u St c',
   | MReturn e => eval_matching c G (update_locs St) A m D (MRReturn e) c'
   | MFail => A' = [] /\ eval_matching c G (update_locs St) A m D MRFail c'
   | _ => False
-  end.
+  end
+.
 Proof.
   - intros c G e D w St c' Hbal Hwhnf.
     inversion Hbal; subst.
@@ -53,16 +54,13 @@ Proof.
       eapply EvalVar; eauto.
 
     + (* BExprSat *)
-      assert (Hmatch : eval_matching c G (update_locs (KEnd :: St)) [] m D0 (MRReturn e0) c1). { 
+      assert (Hmatch : eval_matching c G (update_locs (KEnd :: St)) [] m D0 (MRReturn e0) c1). {
         assert (Hmatch' := balanced_step_to_bigstep_matching_gen c G [] m D0 [] (MReturn e0) (KEnd :: St) c1 H8).
-        simpl in Hmatch'. apply Hmatch'. apply MFinal_Return. 
+        simpl in Hmatch'. apply Hmatch'. apply MFinal_Return.
       }
 
-      assert (Heval : eval_expr c1 D0 (update_locs St) e0 D w c'). {
-        apply balanced_step_to_bigstep_expr_gen with (St := St) (c' := c').
-        - auto.
-        - assumption.
-      }
+      assert (Heval : eval_expr c1 D0 (update_locs St) e0 D w c').
+      { apply balanced_step_to_bigstep_expr_gen with (St := St) (c' := c'); auto. }
 
       eapply EvalSat; eauto.
 
@@ -74,7 +72,7 @@ Proof.
       * (* BMatchReturnArgs *)
         inversion H10; subst.
         -- apply EvalReturn.
-        -- exfalso. list_contradiction.
+        -- contradiction.
 
       * (* BMatchArg *)
         assert (Heval : eval_matching c G (update_locs St) (y :: A) m0 D (MRReturn e) c').
@@ -106,8 +104,7 @@ Proof.
         destruct Hm1 as [_ Hm1].
 
         assert (Hm2: eval_matching c1 D0 (update_locs St) A m2 D (MRReturn e) c').
-        { apply balanced_step_to_bigstep_matching_gen with (A' := A') (u := MReturn e); auto. 
-        }
+        { apply balanced_step_to_bigstep_matching_gen with (A' := A') (u := MReturn e); auto. }
 
         eapply EvalAltRight; eauto.
 
@@ -139,9 +136,7 @@ Proof.
 
       * (* BMatchBind *)
         assert (Hsubst_result : A' = [] /\ eval_matching c G (update_locs St) A0 (subst_matching m0 y x) D MRFail c').
-        {
-          apply balanced_step_to_bigstep_matching_gen with (A' := A') (u := MFail); auto.
-        }
+        { apply balanced_step_to_bigstep_matching_gen with (A' := A') (u := MFail); auto. }
         destruct Hsubst_result as [HA' Hsubst_eval].
 
         split; [ assumption | ].
@@ -175,11 +170,11 @@ Proof.
         { apply balanced_step_to_bigstep_matching_gen with (A' := A') (u := MFail); auto. }
         destruct Hm2 as [HA' Hm2].
 
-        split; [assumption|].
+        split; [ assumption | ].
         simpl in Hm1.
         eapply EvalAltRight; eauto.
 
-      * (* BMatchAltRight fail *)
+      * (* BMatchWhere *)
         assert (HFail : A' = [] /\ eval_matching (c + Datatypes.length binds)
                                     (allocate_bindings G
                                     (rename_bindings binds (gen_n_fresh c (Datatypes.length binds))))
@@ -199,4 +194,3 @@ Proof.
         split; auto.
         eapply EvalWhere with (ys := gen_n_fresh c (Datatypes.length binds)); eauto.
 Qed.
-
