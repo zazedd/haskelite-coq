@@ -100,3 +100,27 @@ Proof.
       * apply Hinj. assumption.
       * apply IHl1; assumption.
 Qed.
+
+(* abstract fresh variable generation *)
+Class FreshVarGen := {
+
+  (* generate n fresh variables, given a set of variables to avoid *)
+  gen_fresh : var_set -> nat -> list var;
+
+  (* properties that any implementation must satisfy *)
+
+  gen_fresh_length : forall avoid n,
+    length (gen_fresh avoid n) = n;
+
+  gen_fresh_NoDup : forall avoid n,
+    NoDup (gen_fresh avoid n);
+
+  gen_fresh_avoid : forall avoid n x,
+    In x (gen_fresh avoid n) -> ~ In x avoid;
+
+  gen_fresh_distinct_calls : forall avoid1 avoid2 n1 n2,
+    (forall x, In x avoid1 <-> In x avoid2) ->
+    n1 = n2 ->
+    gen_fresh avoid1 n1 = gen_fresh avoid2 n2
+}.
+

@@ -4,61 +4,61 @@ From Haskelite Require Import Expr Common Bigstep Smallstep Big_impl_small Small
 Import ListNotations.
 
 (* main theorem *)
-Theorem bigstep_iff_balanced_step_expr : forall c G L e D w St c',
+Theorem bigstep_iff_balanced_step_expr {FG : FreshVarGen} : forall G L e D w St,
   L = update_locs St ->
   whnf w ->
-  (eval_expr c G L e D w c' <->
+  (eval_expr G L e D w <->
    balanced_step_expr
-     {| c := c; cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |}
-     {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |})
+     {| cfg_heap := G; cfg_ctrl := CtrlExpr e; cfg_stack := St |}
+     {| cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := St |})
 
-with bigstep_iff_balanced_step_matching : forall c G L A m D u St c',
+with bigstep_iff_balanced_step_matching {FG : FreshVarGen} : forall G L A m D u St,
   L = update_locs St ->
   matching_final u ->
   (match u with
-   | MReturn e => eval_matching c G L A m D (MRReturn e) c'
-   | MFail => eval_matching c G L A m D MRFail c'
+   | MReturn e => eval_matching G L A m D (MRReturn e)
+   | MFail => eval_matching G L A m D MRFail
    | _ => False
    end <->
    balanced_step_matching
-     {| c := c; cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |}
-     {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch [] u; cfg_stack := St |})
+     {| cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |}
+     {| cfg_heap := D; cfg_ctrl := CtrlMatch [] u; cfg_stack := St |})
 .
 Proof.
-  - intros c G L e D w St c' HL Hwhnf. split; intro H.
+  - intros G L e D w St HL Hwhnf. split; intro H.
     + apply (proj1 bigstep_impl_balancedstep) with (L := L); assumption.
     + subst L. apply balanced_step_to_bigstep_expr_gen in H; assumption.
 
-  - intros c G L A m D u St c' HL Hu.
+  - intros G L A m D u St HL Hu.
     destruct u; try (exfalso; inversion Hu; fail).
     + split; intro H.
-      * exact (proj2 bigstep_impl_balancedstep c G L A m D (MRReturn e) c' H St HL).
+      * exact (proj2 bigstep_impl_balancedstep G L A m D (MRReturn e) H St HL).
       * subst L. apply balanced_step_to_bigstep_matching_gen in H; auto.
     + split; intro H.
-      * exact (proj2 bigstep_impl_balancedstep c G L A m D MRFail c' H St HL).
+      * exact (proj2 bigstep_impl_balancedstep G L A m D MRFail H St HL).
       * subst L. apply balanced_step_to_bigstep_matching_gen in H; auto.
         destruct H. assumption.
 Qed.
 
-Corollary initial_bigstep_iff_balanced_step_expr : forall e D w c',
+Corollary initial_bigstep_iff_balanced_step_expr {FG : FreshVarGen} : forall e D w,
   whnf w ->
-  (eval_expr 0 empty_heap [] e D w c' <->
+  (eval_expr empty_heap [] e D w <->
    balanced_step_expr
-     {| c := 0; cfg_heap := empty_heap; cfg_ctrl := CtrlExpr e; cfg_stack := [] |}
-     {| c := c'; cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := [] |})
+     {| cfg_heap := empty_heap; cfg_ctrl := CtrlExpr e; cfg_stack := [] |}
+     {| cfg_heap := D; cfg_ctrl := CtrlExpr w; cfg_stack := [] |})
 
-with initial_bigstep_iff_balanced_step_matching : forall A m D u c',
+with initial_bigstep_iff_balanced_step_matching {FG : FreshVarGen} : forall A m D u,
   matching_final u ->
   (match u with
-   | MReturn e => eval_matching 0 empty_heap [] A m D (MRReturn e) c'
-   | MFail => eval_matching 0 empty_heap [] A m D MRFail c'
+   | MReturn e => eval_matching empty_heap [] A m D (MRReturn e)
+   | MFail => eval_matching empty_heap [] A m D MRFail
    | _ => False
    end <->
    balanced_step_matching
-     {| c := 0; cfg_heap := empty_heap; cfg_ctrl := CtrlMatch A m; cfg_stack := [] |}
-     {| c := c'; cfg_heap := D; cfg_ctrl := CtrlMatch [] u; cfg_stack := [] |})
+     {| cfg_heap := empty_heap; cfg_ctrl := CtrlMatch A m; cfg_stack := [] |}
+     {| cfg_heap := D; cfg_ctrl := CtrlMatch [] u; cfg_stack := [] |})
 .
 Proof.
-  - intros. apply bigstep_iff_balanced_step_expr with (c := 0) (G := empty_heap) (L := []). reflexivity. assumption.
-  - intros. apply bigstep_iff_balanced_step_matching with (c := 0) (G := empty_heap) (L := []). reflexivity. assumption.
+  - intros. apply bigstep_iff_balanced_step_expr with (G := empty_heap) (L := []). reflexivity. assumption.
+  - intros. apply bigstep_iff_balanced_step_matching with (G := empty_heap) (L := []). reflexivity. assumption.
 Qed.
