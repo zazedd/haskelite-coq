@@ -4,11 +4,16 @@ Import ListNotations.
 Definition var := string.
 Definition constructor := string.
 
+Inductive bop : Type := | Add | Sub | Mul | Div.
+
 Inductive pattern : Type :=
-  | PVar : var -> pattern                          (* x *)
+  | PNat : nat -> pattern                           (* n, literal *)
+  | PVar : var -> pattern                           (* x *)
   | PCons : constructor -> list pattern -> pattern. (* c(p1,...,pn) *)
 
 Inductive expr : Type :=
+  | ENat : nat -> expr                           (* n, literal *)
+  | EBop : bop -> expr -> expr -> expr           (* op e1 e2 *)
   | EVar : var -> expr                           (* x *)
   | EApp : expr -> expr -> expr                  (* e1 e2 *)
   | ELam : matching -> expr                      (* λm *)
@@ -52,6 +57,8 @@ Fixpoint matching_arity (m : matching) : option nat :=
   end.
 
 Inductive whnf : expr -> Prop :=
+  | whnf_nat : forall n,
+      whnf (ENat n)
   | whnf_lambda : forall m n,
       matching_arity m = Some (S n) ->  (* arity > 0 *)
       whnf (ELam m)

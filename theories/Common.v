@@ -36,9 +36,19 @@ Definition heap_update (h : heap) (x : var) (e : expr) : heap :=
 Definition heap_remove (h : heap) (x : var) : heap :=
   StringMap.remove x h.
 
+Definition eval_bop (op : bop) (n1 n2 : nat) : option nat :=
+  match op with
+  | Add => Some (n1 + n2)
+  | Sub => Some (n1 - n2)
+  | Mul => Some (n1 * n2)
+  | Div => if Nat.eqb n2 0 then None else Some (n1 / n2)
+  end.
+
 (* renamings only *)
 Fixpoint subst_expr (e : expr) (y : var) (x : var) {struct e} : expr :=
   match e with
+  | ENat n => ENat n
+  | EBop op e1 e2 => EBop op (subst_expr e1 y x) (subst_expr e2 y x)
   | EVar z => if String.eqb z x then EVar y else EVar z
   | EApp e1 e2 => EApp (subst_expr e1 y x) (subst_expr e2 y x)
   | ELam m => ELam (subst_matching m y x)
