@@ -12,8 +12,11 @@ Inductive continuation : Type :=
   | KUpdate : var -> continuation                 (* !y *)
   | KEnd : continuation                           (* $ *)
   | KAlt : list var -> matching -> continuation   (* ?(A, m) *)
-  | KPat : list var -> constructor -> list pattern -> matching -> continuation.
+  | KPat : list var -> constructor -> list pattern -> matching -> continuation
                                                   (* @(A, c(ps) ⇒ m) *)
+  | KBopL : bop -> expr -> continuation
+  | KBopR : bop -> nat -> continuation
+  | KPatNat : list var -> nat -> matching -> continuation.
 
 Definition stack := list continuation.
 
@@ -90,6 +93,22 @@ Inductive step : config -> config -> Prop :=
       s=>
       {| cfg_heap := G; cfg_ctrl := CtrlExpr (ELam (MSupply (EVar y) m)); cfg_stack := St |}
 
+  | StepBop1 : forall G op e1 e2 St,
+      {| cfg_heap := G; cfg_ctrl := CtrlExpr (EBop op e1 e2); cfg_stack := St |}
+      s=>
+      {| cfg_heap := G; cfg_ctrl := CtrlExpr e1; cfg_stack := KBopL op e2 :: St |}
+
+  | StepBop2 : forall G op n1 e2 St,
+      {| cfg_heap := G; cfg_ctrl := CtrlExpr (ENat n1); cfg_stack := KBopL op e2 :: St |}
+      s=>
+      {| cfg_heap := G; cfg_ctrl := CtrlExpr e2; cfg_stack := KBopR op n1 :: St |}
+
+  | StepBop3 : forall G op n1 n2 n St,
+      eval_bop op n1 n2 = Some n ->
+      {| cfg_heap := G; cfg_ctrl := CtrlExpr (ENat n2); cfg_stack := KBopR op n1 :: St |}
+      s=>
+      {| cfg_heap := G; cfg_ctrl := CtrlExpr (ENat n); cfg_stack := St |}
+
   (* saturated matching (arity 0) switches to matching evaluation *)
   | StepSat : forall G m St,
       matching_arity m = Some 0 ->
@@ -131,6 +150,22 @@ Inductive step : config -> config -> Prop :=
       {| cfg_heap := G; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := KAlt A' m :: St |}
       s=>
       {| cfg_heap := G; cfg_ctrl := CtrlMatch [] (MReturn e); cfg_stack := St |}
+
+  | StepNat1 : forall G x A n m St,
+      {| cfg_heap := G; cfg_ctrl := CtrlMatch (x :: A) (MMatch (PNat n) m); cfg_stack := St |}
+      s=>
+      {| cfg_heap := G; cfg_ctrl := CtrlExpr (EVar x); cfg_stack := KPatNat A n m :: St |}
+
+  | StepNat2 : forall G n A m St,
+      {| cfg_heap := G; cfg_ctrl := CtrlExpr (ENat n); cfg_stack := KPatNat A n m :: St |}
+      s=>
+      {| cfg_heap := G; cfg_ctrl := CtrlMatch A m; cfg_stack := St |}
+
+  | StepNatFail : forall G n1 n2 A m St,
+      n1 <> n2 ->
+      {| cfg_heap := G; cfg_ctrl := CtrlExpr (ENat n2); cfg_stack := KPatNat A n1 m :: St |}
+      s=>
+      {| cfg_heap := G; cfg_ctrl := CtrlMatch [] MFail; cfg_stack := St |}
 
   (* variable pattern performs substitution *)
   | StepBind : forall G y A x m St,
@@ -403,6 +438,35 @@ Inductive balanced_step_expr : config -> config -> Prop :=
         {| cfg_heap := G; cfg_ctrl := CtrlExpr (ELam m); cfg_stack := St |}
         {| cfg_heap := O; cfg_ctrl := CtrlExpr w; cfg_stack := St |}
 
+  | BExprBop : forall G D1 D2 op e1 e2 n1 n2 n St,
+      (* push left frame *)
+      {| cfg_heap := G; cfg_ctrl := CtrlExpr (EBop op e1 e2); cfg_stack := St |} s=>
+      {| cfg_heap := G; cfg_ctrl := CtrlExpr e1; cfg_stack := KBopL op e2 :: St |} ->
+
+      (* balanced evaluation of left operand *)
+      balanced_step_expr
+        {| cfg_heap := G; cfg_ctrl := CtrlExpr e1; cfg_stack := KBopL op e2 :: St |}
+        {| cfg_heap := D1; cfg_ctrl := CtrlExpr (ENat n1); cfg_stack := KBopL op e2 :: St |} ->
+
+      (* push right frame *)
+      {| cfg_heap := D1; cfg_ctrl := CtrlExpr (ENat n1); cfg_stack := KBopL op e2 :: St |} s=>
+      {| cfg_heap := D1; cfg_ctrl := CtrlExpr e2; cfg_stack := KBopR op n1 :: St |} ->
+
+      (* balanced evaluation of right operand *)
+      balanced_step_expr
+        {| cfg_heap := D1; cfg_ctrl := CtrlExpr e2; cfg_stack := KBopR op n1 :: St |}
+        {| cfg_heap := D2; cfg_ctrl := CtrlExpr (ENat n2); cfg_stack := KBopR op n1 :: St |} ->
+
+      (* compute result *)
+      eval_bop op n1 n2 = Some n ->
+      {| cfg_heap := D2; cfg_ctrl := CtrlExpr (ENat n2); cfg_stack := KBopR op n1 :: St |} s=>
+      {| cfg_heap := D2; cfg_ctrl := CtrlExpr (ENat n); cfg_stack := St |} ->
+
+      (* overall is balanced *)
+      balanced_step_expr
+        {| cfg_heap := G; cfg_ctrl := CtrlExpr (EBop op e1 e2); cfg_stack := St |}
+        {| cfg_heap := D2; cfg_ctrl := CtrlExpr (ENat n); cfg_stack := St |}
+
 (* Balanced matching evaluation traces *)
 with balanced_step_matching : config -> config -> Prop :=
   (* return with empty args *)
@@ -430,6 +494,50 @@ with balanced_step_matching : config -> config -> Prop :=
       balanced_step_matching
         {| cfg_heap := G; cfg_ctrl := CtrlMatch A (MReturn e); cfg_stack := St |}
         {| cfg_heap := D; cfg_ctrl := CtrlMatch [] (MReturn (apply_args A e)); cfg_stack := St |}
+
+  | BMatchNatSuccess : forall G D O A A' x n m u St,
+      (* switch to expr evaluation *)
+      {| cfg_heap := G; cfg_ctrl := CtrlMatch (x :: A) (MMatch (PNat n) m); cfg_stack := St |} s=>
+      {| cfg_heap := G; cfg_ctrl := CtrlExpr (EVar x); cfg_stack := KPatNat A n m :: St |} ->
+
+      (* balanced evaluation of variable to matching nat *)
+      balanced_step_expr
+        {| cfg_heap := G; cfg_ctrl := CtrlExpr (EVar x); cfg_stack := KPatNat A n m :: St |}
+        {| cfg_heap := D; cfg_ctrl := CtrlExpr (ENat n); cfg_stack := KPatNat A n m :: St |} ->
+
+      (* match succeeds, continue *)
+      {| cfg_heap := D; cfg_ctrl := CtrlExpr (ENat n); cfg_stack := KPatNat A n m :: St |} s=>
+      {| cfg_heap := D; cfg_ctrl := CtrlMatch A m; cfg_stack := St |} ->
+
+      (* balanced evaluation of continuation *)
+      balanced_step_matching
+        {| cfg_heap := D; cfg_ctrl := CtrlMatch A m; cfg_stack := St |}
+        {| cfg_heap := O; cfg_ctrl := CtrlMatch A' u; cfg_stack := St |} ->
+
+      (* overall is balanced *)
+      balanced_step_matching
+        {| cfg_heap := G; cfg_ctrl := CtrlMatch (x :: A) (MMatch (PNat n) m); cfg_stack := St |}
+        {| cfg_heap := O; cfg_ctrl := CtrlMatch A' u; cfg_stack := St |}
+
+  | BMatchNatFail : forall G D A x n1 n2 m St,
+      n1 <> n2 ->
+      (* switch to expr evaluation *)
+      {| cfg_heap := G; cfg_ctrl := CtrlMatch (x :: A) (MMatch (PNat n1) m); cfg_stack := St |} s=>
+      {| cfg_heap := G; cfg_ctrl := CtrlExpr (EVar x); cfg_stack := KPatNat A n1 m :: St |} ->
+
+      (* balanced evaluation of variable to different nat *)
+      balanced_step_expr
+        {| cfg_heap := G; cfg_ctrl := CtrlExpr (EVar x); cfg_stack := KPatNat A n1 m :: St |}
+        {| cfg_heap := D; cfg_ctrl := CtrlExpr (ENat n2); cfg_stack := KPatNat A n1 m :: St |} ->
+
+      (* match fails *)
+      {| cfg_heap := D; cfg_ctrl := CtrlExpr (ENat n2); cfg_stack := KPatNat A n1 m :: St |} s=>
+      {| cfg_heap := D; cfg_ctrl := CtrlMatch [] MFail; cfg_stack := St |} ->
+
+      (* overall is balanced *)
+      balanced_step_matching
+        {| cfg_heap := G; cfg_ctrl := CtrlMatch (x :: A) (MMatch (PNat n1) m); cfg_stack := St |}
+        {| cfg_heap := D; cfg_ctrl := CtrlMatch [] MFail; cfg_stack := St |}
 
   (* supply: arg + bal_matching *)
   | BMatchArg : forall G D A A' y m u St,
@@ -609,10 +717,28 @@ Proof.
       eapply step_star_trans. eapply step_star_one. eauto.
       eauto.
 
+    + (* BExprBop *)
+      eapply step_star_trans. eapply step_star_one. eauto.
+      eapply step_star_trans. eauto.
+      eapply step_star_trans. eapply step_star_one. eauto.
+      eapply step_star_trans. eauto.
+      eapply step_star_one. eauto.
+
   - intros cfg1 cfg2 Hbal.
     induction Hbal; try constructor.
     + (* BMatchReturnArgs *)
       eapply step_star_trans. eapply step_star_one. eauto. eauto.
+
+    + (* BMatchNatSuccess *)
+      eapply step_star_trans. eapply step_star_one. eauto.
+      eapply step_star_trans. apply balanced_expr_to_steps. eauto.
+      eapply step_star_trans. eapply step_star_one. eauto.
+      eauto.
+
+    + (* BMatchNatFail *)
+      eapply step_star_trans. eapply step_star_one. eauto.
+      eapply step_star_trans. apply balanced_expr_to_steps. eauto.
+      eapply step_star_one. eauto.
 
     + (* BMatchArg *)
       eapply step_star_trans. eapply step_star_one. eauto. eauto.

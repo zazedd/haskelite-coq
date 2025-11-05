@@ -64,6 +64,15 @@ Proof.
 
       eapply EvalSat; eauto.
 
+    + (* BExprBop *)
+      assert (Heval1 : eval_expr G (update_locs St) e1 D1 (ENat n1)).
+      { apply balanced_step_to_bigstep_expr_gen with (St := KBopL op e2 :: St); auto. constructor. }
+
+      assert (Heval2 : eval_expr D1 (update_locs St) e2 D (ENat n2)).
+      { apply balanced_step_to_bigstep_expr_gen with (St := KBopR op n1 :: St); auto. constructor. }
+
+      eapply EvalBop; eauto.
+
   - intros G A m D A' u St Hbal Hfinal.
     destruct u; try (exfalso; inversion Hfinal; fail).
     + (* MReturn *)
@@ -73,6 +82,15 @@ Proof.
         inversion H8; subst.
         -- apply EvalReturn.
         -- contradiction.
+
+      * (* BMatchNatSuccess *)
+        assert (Heval_expr : eval_expr G (update_locs (KPatNat A0 n m0 :: St)) (EVar x) D0 (ENat n)).
+        { apply balanced_step_to_bigstep_expr_gen; auto. constructor. }
+
+        assert (Heval_match : eval_matching D0 (update_locs St) A0 m0 D (MRReturn e)).
+        { apply balanced_step_to_bigstep_matching_gen with (A' := A') (u := MReturn e); auto. }
+
+        eapply EvalNatMatch; eauto.
 
       * (* BMatchArg *)
         assert (Heval : eval_matching G (update_locs St) (y :: A) m0 D (MRReturn e)).
@@ -125,6 +143,23 @@ Proof.
       * (* BMatchFail *)
         split; [ reflexivity | ].
         constructor.
+
+      * (* BMatchNatSuccess *)
+        assert (Heval_expr : eval_expr G (update_locs (KPatNat A0 n m0 :: St)) (EVar x) D0 (ENat n)).
+        { apply balanced_step_to_bigstep_expr_gen; auto. constructor. }
+
+        assert (Hm0 : A' = [] /\ eval_matching D0 (update_locs St) A0 m0 D MRFail).
+        { apply balanced_step_to_bigstep_matching_gen with (A' := A') (u := MFail); auto. }
+        destruct Hm0 as [HA' H10].
+        split; [ assumption | ].
+        eapply EvalNatMatch; eauto.
+
+      * (* BMatchNatFail *)
+        assert (Heval_expr : eval_expr G (update_locs (KPatNat A0 n1 m0 :: St)) (EVar x) D (ENat n2)).
+        { apply balanced_step_to_bigstep_expr_gen; auto. constructor. }
+
+        split; [ reflexivity | ].
+        eapply EvalNatFail; eauto.
 
       * (* BMatchArg *)
         assert (Hinner_result : A' = [] /\ eval_matching G (update_locs St) (y :: A) m0 D MRFail).

@@ -45,10 +45,12 @@ Theorem bigstep_impl_balancedstep :
                   cfg_stack := St |}).
 Proof.
   apply eval_ind.
-  - intros G L w Hwhnf St HL.
+  - (* EvalWhnf *)
+    intros G L w Hwhnf St HL.
     apply BExprWhnf. assumption.
 
-  - intros G L m e D O w Harity Hmatch IHmatch Heval IHeval St HL.
+  - (* EvalSat *)
+    intros G L m e D O w Harity Hmatch IHmatch Heval IHeval St HL.
     eapply BExprSat.
     + exact Harity.
     + apply StepSat. exact Harity.
@@ -56,7 +58,8 @@ Proof.
     + apply StepReturn1B.
     + apply IHeval. assumption.
 
-  - intros G L y e D w Hheap Hnotin Heval IHexpr St HL.
+  - (* EvalVar *)
+    intros G L y e D w Hheap Hnotin Heval IHexpr St HL.
     eapply BExprVar.
     + exact Hheap.
     + subst L. exact Hnotin.
@@ -64,7 +67,8 @@ Proof.
     + apply IHexpr. simpl. subst L. reflexivity.
     + apply StepUpdate. eapply eval_expr_produces_whnf. eassumption.
 
-  - intros G L e1 e2 m D O w x Hexpr1 IHexpr1 Hvar Hexpr2 IHexpr2 St HL.
+  - (* EvalApp *)
+    intros G L e1 e2 m D O w x Hexpr1 IHexpr1 Hvar Hexpr2 IHexpr2 St HL.
     subst e2.
     destruct (eval_expr_lambda_arity _ _ _ _ _ Hexpr1) as [n Harity].
     eapply BExprApp.
@@ -73,7 +77,11 @@ Proof.
     + econstructor. exact Harity.
     + apply IHexpr2. exact HL.
 
-  - (* BMatchReturn *)
+  - (* EvalBop *)
+    intros G L op e1 e2 n1 n2 n D1 D2 Hexpr1 IHexpr1 Hexpr2 IHexpr2 Hbop St HL.
+    eapply BExprBop; try constructor; try eassumption; eauto.
+
+  - (* EvalReturn *)
     intros G L A e St HL.
     destruct A as [| y A'].
     + simpl. apply BMatchReturn.
@@ -82,23 +90,39 @@ Proof.
       * apply StepReturn1A. discriminate.
       * apply BMatchReturn.
 
-  - (* BMatchFail *)
+  - (* EvalMatchFail *)
     intros G L St HL.
     constructor.
 
-  - (* BMatchArg *)
+  - (* EvalArg *)
     intros G L A x m D u Hmatch IHmatch St HL.
     eapply BMatchArg.
     + constructor.
     + apply IHmatch. exact HL.
 
-  - (* BMatchBind *)
+  - (* EvalBindVar *)
     intros G L A x y m D u Hmatch IHmatch St HL.
     eapply BMatchBind.
     + constructor.
     + apply IHmatch. exact HL.
 
-  - (* BMatchConsSuccess *)
+  - (* EvalNatMatch *)
+    intros G L A x n m D1 D2 u Hexpr IHexpr Hmatching IHmatching St HL.
+    eapply BMatchNatSuccess.
+    + constructor.
+    + eapply IHexpr. simpl. exact HL.
+    + constructor.
+    + eapply IHmatching. exact HL.
+
+  - (* EvalNatFail *)
+    intros G L A x n1 n2 m D Hexpr IHexpr Hneq St HL.
+    eapply BMatchNatFail.
+    + eassumption.
+    + constructor.
+    + apply IHexpr. simpl. exact HL.
+    + constructor. assumption.
+
+  - (* EvalConsMatch *)
     intros G L A x con ps m args D O u Hexpr IHexpr Hlen Hmatching IHmatching St HL.
     eapply BMatchConsSuccess.
     + constructor.
@@ -107,7 +131,7 @@ Proof.
     + constructor. symmetry. assumption.
     + apply IHmatching. assumption.
 
-  - (* BMatchConsFail *)
+  - (* EvalConsFail *)
     intros G L A x con con' ps m args D Hexpr IHexpr Hneq St HL.
     eapply BMatchConsFail.
     + exact Hneq.
@@ -115,14 +139,14 @@ Proof.
     + apply IHexpr. simpl. exact HL.
     + apply StepFail. exact Hneq.
 
-  - (* BMatchAltLeft *)
+  - (* EvalAltLeft *)
     intros G L A m1 m2 e D Hmatch IHmatch St HL.
     apply BMatchAltLeft.
     + constructor.
     + apply IHmatch. simpl. exact HL.
     + constructor.
 
-  - (* BMatchAltRight *)
+  - (* EvalAltRight *)
     intros G L A m1 m2 D O u Hmatch1 IHmatch1 Hmatch2 IHmatch2 St HL.
     eapply BMatchAltRight.
     + constructor.
@@ -130,7 +154,7 @@ Proof.
     + constructor.
     + apply IHmatch2. exact HL.
 
-  - (* BMatchWhere *)
+  - (* EvalWhere *)
     intros G L A m binds D u ys renamed_binds renamed_m Hys Hbinds Hm Hmatch IHmatch St HL.
     eapply BMatchWhere; try eassumption.
     + subst L. assumption.
