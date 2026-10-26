@@ -1,0 +1,26 @@
+\chapter{Balanced evaluations}
+\label{chap:balance}
+
+\section{Preserving the surrounding stack}
+% Introduce the source paper's definition: equal boundary stacks, with every
+% intermediate stack extending the initial stack. Explain why boundary equality
+% alone is insufficient for reasoning about evaluation under a continuation.
+
+\section{Black-holing and update frames}
+% Relate the big-step black-hole set to the machine stack by L = update_locs St.
+% Show how an update frame extends this set and how other frames leave it alone.
+% Distinguish an invariant derived from machine reachability from a side
+% condition imposed directly by the balanced tree relation.
+
+\section{The difficulty with linear traces}
+% Use variable lookup and heap update to exhibit the required trace split:
+% evaluation under an update frame, followed by the transition that removes it.
+% Explain why endpoint-only and stack-indexed linear relations did not expose
+% the subevaluations needed by the reverse induction.
+
+\section{Balanced evaluation trees}
+% Define the mutually inductive expression and matching tree relations.
+% Show how their constructors record transitions and nested subevaluations.
+% Explain why matching trees allow distinct initial and final argument stacks.
+% Make clear that trees are not yet proved equivalent to all balanced sequences
+% in the source paper's sense. The next chapter states exactly what is checked.

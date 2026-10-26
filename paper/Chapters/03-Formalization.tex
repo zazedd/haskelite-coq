@@ -1,0 +1,34 @@
+\chapter{Formalizing the semantics in Coq}
+\label{chap:formalization}
+
+\section{Representing syntax, heaps, and judgments}
+% Explain the mutually inductive syntax and evaluation relations, finite-map
+% heaps, and list representations of argument stacks and black-hole sets.
+% Describe which syntax restrictions the relations enforce rather than the types.
+
+\section{Binding, substitution, and local definitions}
+% Explain variable-pattern substitution and allocation for where bindings.
+% Compare the implemented substitution and renaming operations with the source
+% paper's binding conventions. State the qualifications of the current model.
+
+\section{Choosing fresh names}
+\label{sec:freshness}
+% Use a short where example to show why the two semantics must choose compatible
+% names when correspondence requires identical heaps and results.
+
+\subsection{Canonical names and the counter-based approach}
+% Explain the alpha-equivalence obstacle in the first correspondence attempt.
+% Describe how counter threading aligned names and what it added to judgments.
+% Keep the history focused on the proof obligation each approach addressed.
+
+\subsection{A shared fresh-name generator}
+% Present FreshVarGen and its laws, then explain how both semantics use it.
+% Distinguish agreement on generated names from the source paper's full
+% freshness condition: the current calls avoid L or update_locs St, not every
+% name occurring in the heap, arguments, and matching. Note that main supplies
+% no concrete generator instance.
+
+\section{Determinism}
+% State determinism for expression evaluation, matching evaluation, and machine
+% transitions with a fixed generator. Explain the role of arity and fresh-name
+% choices without reproducing the tactic scripts.

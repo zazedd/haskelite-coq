@@ -1,0 +1,38 @@
+\chapter{Proving the correspondence}
+\label{chap:proof}
+
+\section{The theorem and its assumptions}
+% State both the expression and matching equivalences, including final-result
+% conditions, L = update_locs St, and the shared FreshVarGen parameter.
+% Display the proved relations: big-step evaluation iff balanced trees, and
+% balanced trees imply machine executions. Do not label the latter an equivalence.
+
+\section{From big-step derivations to balanced trees}
+% Explain mutual induction on the big-step derivations. Show how a representative
+% rule supplies the transitions and subtrees of its balanced tree constructor.
+
+\section{From balanced trees to big-step derivations}
+% Explain the reverse mutual induction and why its matching statement must
+% generalize the final argument stack. Use the following cases to show where
+% the statement and the tree structure matter.
+
+\subsection{Variable lookup and heap update}
+% Reconstruct EvalVar from its subtree and the update transition.
+% Track the black-hole set through KUpdate and identify the tree side condition
+% used to exclude an already active variable.
+
+\subsection{Matching results and alternatives}
+% Explain the distinct treatment of return and failure, including the empty
+% final argument stack required for failure. Show how a failed left alternative
+% passes its updated heap and restores the saved arguments for the right branch.
+
+\section{From balanced trees to machine executions}
+% Explain how trees flatten to the reflexive-transitive closure of step.
+% Derive the big-step-to-machine result and its empty-heap, empty-stack instance.
+% The initial iff theorem concerns balanced trees, not arbitrary machine traces.
+
+\section{The remaining trace-to-tree direction}
+% State the missing decomposition result for ordinary balanced machine traces.
+% Compare the checked statements with Theorems 4.1 and 4.5 and Corollary 4.6 of
+% the source paper. Separate the proved correspondence from the work needed to
+% recover the full machine-to-big-step claim and justify reachability invariants.
